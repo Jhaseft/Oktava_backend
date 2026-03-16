@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(taskkill:*)",
+      "Bash(npx eslint:*)",
+      "Bash(npx tsc:*)",
+      "WebFetch(domain:docs.safe.global)",
+      "WebFetch(domain:www.npmjs.com)",
+      "Bash(npx nest build:*)",
+      "Bash(npx prisma:*)",
+      "Bash(echo:*)"
+    ]
+  }
+}
