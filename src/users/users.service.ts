@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { PrismaService } from 'prisma/prisma.service';
@@ -9,8 +9,18 @@ export class UsersService {
   constructor(private readonly prismaService: PrismaService) {}
 
 
-  create(createUserDto: CreateUserDto) {
-    return 'This action adds a new user';
+  async create(createUserDto: CreateUserDto):Promise<User> {
+    try{
+      return await this.prismaService.user.create({
+        data: createUserDto
+      });
+    }catch(error){
+      if(error.code === 'P2002' && error.meta?.target?.includes('email')){
+        throw new Error('User with this email already exists');
+      }
+    }
+    throw new InternalServerErrorException('Error al crear el usuario.');
+
   }
 
   findAll() {
@@ -22,6 +32,13 @@ export class UsersService {
       where: {email:{equals: email, mode: 'insensitive'}}
     })
     
+  }
+
+  async updateLastLogin(userId: string):Promise<void>{
+    const data = await this.prismaService.user.update({
+      where: {id: userId},
+      data: {lastLogin: new Date()}
+    })
   }
 
   update(id: number, updateUserDto: UpdateUserDto) {
