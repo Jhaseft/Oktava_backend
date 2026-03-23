@@ -1,26 +1,25 @@
 import { Injectable } from '@nestjs/common';
-import { CreateAuthDto } from './dto/create-auth.dto';
-import { UpdateAuthDto } from './dto/update-auth.dto';
+import { LoginDto } from './dto/login.dto';
+import { UsersService } from 'src/users/users.service';
+import * as bcrypt from 'bcrypt';
+import type { User } from '@prisma/client';
 
 @Injectable()
 export class AuthService {
-  create(createAuthDto: CreateAuthDto) {
-    return 'This action adds a new auth';
+  constructor(private readonly usersService: UsersService) {}
+  async validateUser({email, password}:LoginDto): Promise<Omit<User,'passwordHash'>|null> {
+    const user = await this.usersService.findOneByEmail(email);
+    if (user && user.passwordHash && (await bcrypt.compare(password, user.passwordHash))) {
+      const {passwordHash: _,...result}= user;
+      return result;
+    }
+    return null;
   }
 
-  findAll() {
-    return `This action returns all auth`;
-  }
 
-  findOne(id: number) {
-    return `This action returns a #${id} auth`;
-  }
 
-  update(id: number, updateAuthDto: UpdateAuthDto) {
-    return `This action updates a #${id} auth`;
-  }
 
-  remove(id: number) {
-    return `This action removes a #${id} auth`;
+  private generateTokenResponse(user: Omit<User,'passwordHash'>) {
+
   }
 }
