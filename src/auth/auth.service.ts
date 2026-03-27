@@ -47,10 +47,11 @@ export class AuthService {
       phone: user.phone,
       role: user.role,
     }
+    const {createdAt, updatedAt, lastLogin ,...newUser}= user;
 
     return {
       accessToken: this.jwtService.sign(payload),
-      user: user
+      user: newUser
     }
   }
 }
