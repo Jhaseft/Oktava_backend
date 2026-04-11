@@ -38,6 +38,12 @@ export class AuthService {
   }
 
 
+  async googleLogin(googleUser: { email: string; firstName: string; lastName: string }) {
+    const user = await this.usersService.findOrCreateGoogleUser(googleUser);
+    const { password: _, ...userWithoutPassword } = user;
+    return this.generateTokenResponse(userWithoutPassword);
+  }
+
   private generateTokenResponse(user: Omit<User,'password'>) {
     this.usersService.updateLastLogin(user.id);
 

@@ -39,7 +39,7 @@ model User {
   lastName     String
   email        String    @unique
   phone        String?
-  password     String    @map("password_hash")
+  password     String?   @map("password_hash")
   role         Role      @default(CUSTOMER)
   lastLogin    DateTime? @map("last_login")
   isActive     Boolean   @default(true) @map("is_active")
@@ -57,15 +57,23 @@ model User {
 // ─────────────────────────────────────────────
 
 model Address {
-  id             String  @id @default(uuid())
-  userId         String  @map("user_id")
-  label          String  // Ej: "Casa", "Trabajo"
-  direction      String  //direccion 
-  departament    String  // numero de casa o departamento
-  reference      String? // Ej: "Frente al parque" portoon gris etc
-  contact        String?  //con quiern nos comunicaremos para entregar el pedido 
-  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  orders Order[]
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  label         String   // Ej: "Casa", "Trabajo"
+  direction     String   // Dirección legible (calle, número)
+  
+  // --- CAMPOS PARA MAPAS ---
+  latitude      Decimal  @db.Decimal(10, 8)
+  longitude     Decimal  @db.Decimal(11, 8)
+  placeId       String?  @map("place_id") // ID único de Google Maps (opcional)
+  // -------------------------
+
+  departament   String   // Número de casa o departamento
+  reference     String?  // Ej: "Frente al parque, portón gris"
+  contact       String?  // Con quién nos comunicaremos
+  
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders        Order[]
 
   @@map("addresses")
 }

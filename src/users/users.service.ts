@@ -34,6 +34,23 @@ export class UsersService {
     
   }
 
+  async findOrCreateGoogleUser(googleUser: {
+    email: string;
+    firstName: string;
+    lastName: string;
+  }): Promise<User> {
+    const existing = await this.findOneByEmail(googleUser.email);
+    if (existing) return existing;
+
+    return this.prismaService.user.create({
+      data: {
+        email: googleUser.email,
+        firstName: googleUser.firstName,
+        lastName: googleUser.lastName,
+      },
+    });
+  }
+
   async updateLastLogin(userId: string):Promise<void>{
     const data = await this.prismaService.user.update({
       where: {id: userId},
