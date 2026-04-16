@@ -1,13 +1,41 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
+import { CreateCategoryDto } from './dto/create-category.dto';
+import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+
+function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/[^\w-]/g, '')
+    .replace(/-+/g, '-');
+}
+
+function mapCategory(c: any) {
+  return {
+    id: c.id,
+    name: c.name,
+    slug: c.slug,
+    imageUrl: c.imageUrl ?? null,
+    isActive: c.isActive,
+    productCount: c._count?.products ?? undefined,
+  };
+}
 
 @Injectable()
 export class ProductsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  // ─── Private mapper ────────────────────────────────────────────────────────
+  // ─── Private product mapper ────────────────────────────────────────────────
 
   private mapProduct(product: any) {
     const baseVariant = product.variants?.[0];
@@ -26,21 +54,79 @@ export class ProductsService {
     };
   }
 
-  // ─── Categories ────────────────────────────────────────────────────────────
+  // ─── Categories — public ───────────────────────────────────────────────────
 
   async findAllCategories() {
     const categories = await this.prisma.category.findMany({
       where: { isActive: true },
       orderBy: { name: 'asc' },
     });
+    return categories.map(mapCategory);
+  }
 
-    return categories.map((c) => ({
-      id: c.id,
-      name: c.name,
-      slug: c.slug,
-      imageUrl: c.imageUrl ?? null,
-      isActive: c.isActive,
-    }));
+  // ─── Categories — admin ────────────────────────────────────────────────────
+
+  async findAllCategoriesAdmin() {
+    const categories = await this.prisma.category.findMany({
+      orderBy: { name: 'asc' },
+      include: { _count: { select: { products: true } } },
+    });
+    return categories.map(mapCategory);
+  }
+
+  async createCategory(dto: CreateCategoryDto) {
+    const slug = dto.slug?.trim() || slugify(dto.name);
+    try {
+      const created = await this.prisma.category.create({
+        data: {
+          name: dto.name.trim(),
+          slug,
+          imageUrl: dto.imageUrl?.trim() || null,
+        },
+      });
+      return mapCategory(created);
+    } catch (e: any) {
+      if (e.code === 'P2002') {
+        throw new ConflictException(`El slug "${slug}" ya está en uso.`);
+      }
+      throw e;
+    }
+  }
+
+  async updateCategory(id: string, dto: UpdateCategoryDto) {
+    const existing = await this.prisma.category.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException(`Category ${id} not found`);
+
+    try {
+      const updated = await this.prisma.category.update({
+        where: { id },
+        data: {
+          ...(dto.name !== undefined && { name: dto.name.trim() }),
+          ...(dto.slug !== undefined && { slug: dto.slug.trim() }),
+          ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+          ...(dto.imageUrl !== undefined && {
+            imageUrl: dto.imageUrl?.trim() || null,
+          }),
+        },
+      });
+      return mapCategory(updated);
+    } catch (e: any) {
+      if (e.code === 'P2002') {
+        throw new ConflictException('El slug ya está en uso por otra categoría.');
+      }
+      throw e;
+    }
+  }
+
+  async softDeleteCategory(id: string) {
+    const existing = await this.prisma.category.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException(`Category ${id} not found`);
+
+    await this.prisma.category.update({
+      where: { id },
+      data: { isActive: false },
+    });
+    return { message: `Category ${id} deactivated` };
   }
 
   // ─── Products ──────────────────────────────────────────────────────────────
@@ -56,7 +142,6 @@ export class ProductsService {
       },
       orderBy: { createdAt: 'desc' },
     });
-
     return products.map((p) => this.mapProduct(p));
   }
 
@@ -98,11 +183,7 @@ export class ProductsService {
           categoryId: productFields.categoryId,
           isAvailable: productFields.isAvailable ?? true,
           variants: {
-            create: {
-              name: 'Base',
-              price,
-              isAvailable: true,
-            },
+            create: { name: 'Base', price, isAvailable: true },
           },
         },
         include: {
@@ -172,12 +253,10 @@ export class ProductsService {
 
   async softDelete(id: string) {
     await this.findOneProduct(id);
-
     await this.prisma.product.update({
       where: { id },
       data: { isAvailable: false },
     });
-
     return { message: `Product ${id} deactivated` };
   }
 }

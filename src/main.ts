@@ -1,11 +1,18 @@
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { join } from 'path';
+import { existsSync, mkdirSync } from 'fs';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const uploadsDir = join(process.cwd(), 'public', 'uploads');
+  if (!existsSync(uploadsDir)) mkdirSync(uploadsDir, { recursive: true });
+
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  app.useStaticAssets(uploadsDir, { prefix: '/uploads' });
   const logger = new Logger('Bootstrap');
   // Obtener el ConfigService
   const configService = app.get(ConfigService);
