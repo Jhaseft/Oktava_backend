@@ -7,18 +7,17 @@ import {
   Param,
   Patch,
   Post,
-  Req,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Role } from '@prisma/client';
-import { diskStorage } from 'multer';
-import { extname, join } from 'path';
+import { memoryStorage } from 'multer';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -30,7 +29,10 @@ const MAX_SIZE_BYTES = 5 * 1024 * 1024;
 
 @Controller()
 export class ProductsController {
-  constructor(private readonly productsService: ProductsService) {}
+  constructor(
+    private readonly productsService: ProductsService,
+    private readonly cloudinaryService: CloudinaryService,
+  ) {}
 
   // ─── Categories — public ───────────────────────────────────────────────────
 
@@ -93,13 +95,7 @@ export class ProductsController {
   @Roles(Role.ADMIN)
   @UseInterceptors(
     FileInterceptor('file', {
-      storage: diskStorage({
-        destination: join(process.cwd(), 'public', 'uploads'),
-        filename: (_req, file, cb) => {
-          const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-          cb(null, `product-${unique}${extname(file.originalname).toLowerCase()}`);
-        },
-      }),
+      storage: memoryStorage(),
       fileFilter: (_req, file, cb) => {
         if (ALLOWED_MIME.test(file.mimetype)) {
           cb(null, true);
@@ -110,10 +106,10 @@ export class ProductsController {
       limits: { fileSize: MAX_SIZE_BYTES },
     }),
   )
-  uploadImage(@UploadedFile() file: Express.Multer.File, @Req() req: any) {
+  async uploadImage(@UploadedFile() file: Express.Multer.File) {
     if (!file) throw new BadRequestException('No se recibió ningún archivo');
-    const host = `${req.protocol}://${req.get('host')}`;
-    return { url: `${host}/uploads/${file.filename}` };
+    const result = await this.cloudinaryService.uploadStream(file.buffer, 'oktava/products');
+    return { url: result.secure_url };
   }
 
   @Post('products')
