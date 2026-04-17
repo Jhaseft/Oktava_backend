@@ -7,8 +7,14 @@ export const CloudinaryProvider = {
   provide: CLOUDINARY,
   inject: [ConfigService],
   useFactory: (configService: ConfigService) => {
+    const url = configService.get<string>('CLOUDINARY_URL') ?? '';
+    // Parse cloudinary://api_key:api_secret@cloud_name
+    const match = /^cloudinary:\/\/([^:]+):([^@]+)@(.+)$/.exec(url);
+    if (!match) throw new Error(`CLOUDINARY_URL inválida: ${url}`);
     return cloudinary.config({
-      cloud_url: configService.get<string>('CLOUDINARY_URL'),
+      api_key: match[1],
+      api_secret: match[2],
+      cloud_name: match[3],
     });
   },
 };
