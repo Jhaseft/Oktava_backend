@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
-import { OrderType } from '@prisma/client';
+import { OrderStatus, OrderType } from '@prisma/client';
 
 const STORE_LAT = -17.392267;
 const STORE_LNG = -66.069302;
@@ -158,11 +158,40 @@ export class OrdersService {
     const orders = await this.prisma.order.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
+      include: { items: true, address: true },
+    });
+    return orders.map(mapOrder);
+  }
+
+  async findAll(status?: OrderStatus) {
+    const orders = await this.prisma.order.findMany({
+      where: status ? { status } : undefined,
+      orderBy: { createdAt: 'desc' },
       include: {
         items: true,
         address: true,
+        user: {
+          select: { id: true, firstName: true, lastName: true, email: true, phone: true },
+        },
       },
     });
     return orders.map(mapOrder);
+  }
+
+  async updateStatus(id: string, status: OrderStatus) {
+    const order = await this.prisma.order.findUnique({ where: { id } });
+    if (!order) throw new NotFoundException('Pedido no encontrado.');
+    const updated = await this.prisma.order.update({
+      where: { id },
+      data: { status },
+      include: {
+        items: true,
+        address: true,
+        user: {
+          select: { id: true, firstName: true, lastName: true, email: true, phone: true },
+        },
+      },
+    });
+    return mapOrder(updated);
   }
 }
