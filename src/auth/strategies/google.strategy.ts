@@ -15,20 +15,18 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
     } 
 
     async validate(
-        accessToken: string,
-        refreshToken: string,
+        _accessToken: string,
+        _refreshToken: string,
         profile: any,
         done: VerifyCallback,
     ): Promise<any> {
-        const { name, emails, photos } = profile;
+        const { name, emails } = profile;
 
         // Armamos un objeto de usuario temporal con lo que nos dio Google
         const user = {
             email: emails[0].value,
             firstName: name.givenName,
             lastName: name.familyName,
-            picture: photos[0].value,
-            accessToken,
         };
 
         done(null, user);
