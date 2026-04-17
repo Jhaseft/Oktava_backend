@@ -194,4 +194,18 @@ export class OrdersService {
     });
     return mapOrder(updated);
   }
+
+  async confirmReceived(orderId: string, userId: string) {
+    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+    if (order?.userId !== userId) throw new NotFoundException('Pedido no encontrado.');
+    if (order.status !== OrderStatus.ON_THE_WAY && order.status !== OrderStatus.PICKED_UP) {
+      throw new BadRequestException('El pedido aún no está listo para confirmar recepción.');
+    }
+    const updated = await this.prisma.order.update({
+      where: { id: orderId },
+      data: { status: OrderStatus.COMPLETED },
+      include: { items: true, address: true },
+    });
+    return mapOrder(updated);
+  }
 }

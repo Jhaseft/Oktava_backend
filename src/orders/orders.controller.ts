@@ -37,6 +37,11 @@ export class OrdersController {
     return this.ordersService.findMine(user.userId);
   }
 
+  @Patch(':id/confirm-received')
+  confirmReceived(@CurrentUser() user: JwtUser, @Param('id') id: string) {
+    return this.ordersService.confirmReceived(id, user.userId);
+  }
+
   // ─── Admin ─────────────────────────────────────────────────────────────────
 
   @Get()
