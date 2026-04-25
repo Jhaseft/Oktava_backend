@@ -36,6 +36,18 @@ export class UsersService {
     });
   }
 
+  async findOneById(id: string): Promise<User | null> {
+    return this.prisma.user.findUnique({ where: { id } });
+  }
+
+  async findOneByPhone(phone: string): Promise<User | null> {
+    return this.prisma.user.findUnique({ where: { phone } });
+  }
+
+  async setPhoneVerified(userId: string): Promise<void> {
+    await this.prisma.user.update({ where: { id: userId }, data: { phoneVerified: true } });
+  }
+
   async findOrCreateGoogleUser(googleUser: {
     email: string;
     firstName: string;
@@ -58,6 +70,10 @@ export class UsersService {
       where: { id: userId },
       data: { lastLogin: new Date() },
     });
+  }
+
+  async updatePhone(userId: string, phone: string): Promise<void> {
+    await this.prisma.user.update({ where: { id: userId }, data: { phone } });
   }
 
   // ─── Admin-facing methods ──────────────────────────────────────────────────

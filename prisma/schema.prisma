@@ -38,7 +38,8 @@ model User {
   firstName    String
   lastName     String
   email        String    @unique
-  phone        String?
+  phone           String?   @unique
+  phoneVerified   Boolean   @default(false) @map("phone_verified")
   password     String?   @map("password_hash")
   role         Role      @default(CUSTOMER)
   lastLogin    DateTime? @map("last_login")

@@ -8,6 +8,7 @@ import { PassportModule } from '@nestjs/passport';
 import { GoogleStrategy } from './strategies/google.strategy';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { MailModule } from 'src/mail/mail.module';
+import { WhatsappModule } from 'src/whatsapp/whatsapp.module';
 
 @Module({
   controllers: [AuthController],
@@ -16,6 +17,7 @@ import { MailModule } from 'src/mail/mail.module';
     PassportModule,
     UsersModule,
     MailModule,
+    WhatsappModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
