@@ -1,8 +1,20 @@
-import { Controller, Get, Post, Body, HttpCode, HttpStatus, HttpException, UseGuards, Req, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpException,
+  HttpStatus,
+  Post,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { ConfigService } from '@nestjs/config';
 import { LoginDto } from './dto/login.dto';
-import { CreateUserDto } from 'src/users/dto/create-user.dto';
+import { SignUpDto } from './dto/sign-up.dto';
+import { SendVerificationDto } from './dto/send-verification.dto';
 import { GoogleAuthGuard } from './guards/google-auth.guard';
 import type { Request, Response } from 'express';
 
@@ -13,27 +25,30 @@ export class AuthController {
     private readonly configService: ConfigService,
   ) {}
 
-  @Post('sign-in')
+  @Post('send-verification')
   @HttpCode(HttpStatus.OK)
-  async login(@Body() loginDto: LoginDto) {
-    const user = await this.authService.validateUser(loginDto);
-    if(!user){
-      throw new HttpException('Invalid credentials', HttpStatus.UNAUTHORIZED);
-    }
-    return this.authService.login(user);
+  async sendVerification(@Body() dto: SendVerificationDto) {
+    await this.authService.sendVerificationCode(dto.email);
+    return { message: 'Código enviado. Revisa tu correo.' };
   }
 
   @Post('sign-up')
   @HttpCode(HttpStatus.CREATED)
-  async signUp(@Body() createUserDto: CreateUserDto) {
-    return this.authService.register(createUserDto);
+  async signUp(@Body() dto: SignUpDto) {
+    return this.authService.register(dto);
+  }
+
+  @Post('sign-in')
+  @HttpCode(HttpStatus.OK)
+  async login(@Body() loginDto: LoginDto) {
+    const user = await this.authService.validateUser(loginDto);
+    if (!user) throw new HttpException('Invalid credentials', HttpStatus.UNAUTHORIZED);
+    return this.authService.login(user);
   }
 
   @Get('google')
   @UseGuards(GoogleAuthGuard)
-  googleAuth() {
-    // Passport redirige automáticamente a Google
-  }
+  googleAuth() { /* Passport handles the redirect */ }
 
   @Get('google/callback')
   @UseGuards(GoogleAuthGuard)
@@ -44,6 +59,8 @@ export class AuthController {
     const userEncoded = encodeURIComponent(
       Buffer.from(JSON.stringify(result.user)).toString('base64'),
     );
-    return res.redirect(`${frontendUrl}/auth/callback?token=${result.accessToken}&user=${userEncoded}`);
+    return res.redirect(
+      `${frontendUrl}/auth/callback?token=${result.accessToken}&user=${userEncoded}`,
+    );
   }
 }
