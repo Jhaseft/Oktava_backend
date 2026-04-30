@@ -18,10 +18,12 @@ interface PendingCode {
   code: string;
   expiresAt: number;
   attempts: number;
+  sentAt: number;
 }
 
 const CODE_TTL_MS = 10 * 60 * 1000;
 const MAX_ATTEMPTS = 5;
+const RESEND_COOLDOWN_MS = 60 * 1000;
 
 function makeCode() {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -46,7 +48,7 @@ export class AuthService {
     if (existing) throw new ConflictException('Este correo ya está registrado.');
 
     const code = makeCode();
-    this.pendingEmailCodes.set(email.toLowerCase(), { code, expiresAt: Date.now() + CODE_TTL_MS, attempts: 0 });
+    this.pendingEmailCodes.set(email.toLowerCase(), { code, expiresAt: Date.now() + CODE_TTL_MS, attempts: 0, sentAt: Date.now() });
     await this.mailService.sendVerificationCode(email, code);
   }
 
@@ -75,14 +77,23 @@ export class AuthService {
     if (!user.phone) throw new BadRequestException('No tienes un número de teléfono registrado.');
     if (user.phoneVerified) throw new BadRequestException('Tu teléfono ya está verificado.');
 
+    const existing = this.pendingPhoneCodes.get(userId);
+    if (existing) {
+      const elapsed = Date.now() - existing.sentAt;
+      if (elapsed < RESEND_COOLDOWN_MS) {
+        const waitSeconds = Math.ceil((RESEND_COOLDOWN_MS - elapsed) / 1000);
+        throw new BadRequestException(`Espera ${waitSeconds} segundos antes de solicitar un nuevo código.`);
+      }
+    }
+
     const code = makeCode();
-    this.pendingPhoneCodes.set(userId, { code, expiresAt: Date.now() + CODE_TTL_MS, attempts: 0 });
+    this.pendingPhoneCodes.set(userId, { code, expiresAt: Date.now() + CODE_TTL_MS, attempts: 0, sentAt: Date.now() });
 
     const text = `Tu código de verificación Oktava es: *${code}*\nExpira en 10 minutos.`;
     await this.whatsappService.sendText(user.phone, text);
   }
 
-  async verifyPhone(userId: string, code: string): Promise<void> {
+  async verifyPhone(userId: string, code: string): Promise<Omit<User, 'password' | 'createdAt' | 'updatedAt' | 'lastLogin'>> {
     const pending = this.pendingPhoneCodes.get(userId);
     if (!pending) throw new BadRequestException('Solicita un nuevo código de verificación.');
     if (Date.now() > pending.expiresAt) {
@@ -97,6 +108,17 @@ export class AuthService {
     if (pending.code !== code) throw new BadRequestException('Código incorrecto.');
     this.pendingPhoneCodes.delete(userId);
     await this.usersService.setPhoneVerified(userId);
+
+    const updated = await this.usersService.findOneById(userId);
+    const { password: _, createdAt, updatedAt, lastLogin, ...result } = updated!;
+    return result;
+  }
+
+  async getMe(userId: string): Promise<Omit<User, 'password' | 'createdAt' | 'updatedAt' | 'lastLogin'>> {
+    const user = await this.usersService.findOneById(userId);
+    if (!user) throw new NotFoundException('Usuario no encontrado.');
+    const { password: _, createdAt, updatedAt, lastLogin, ...result } = user;
+    return result;
   }
 
   // ─── Auth ──────────────────────────────────────────────────────────────────

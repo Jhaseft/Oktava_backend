@@ -29,6 +29,10 @@ export class WhatsappService {
 
   async sendText(phoneNumber: string, text: string): Promise<void> {
     if (!this.baseUrl || !this.instance || !this.apiKey) {
+      if (process.env.NODE_ENV !== 'production') {
+        this.logger.warn(`[DEV] WhatsApp OTP → ${phoneNumber}\n${text}`);
+        return;
+      }
       throw new ServiceUnavailableException(
         'El servicio de WhatsApp no está configurado en el servidor.',
       );

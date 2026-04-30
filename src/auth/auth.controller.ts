@@ -71,8 +71,14 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   async verifyPhone(@CurrentUser() user: JwtUser, @Body('code') code: string) {
-    await this.authService.verifyPhone(user.userId, code);
-    return { message: 'Teléfono verificado correctamente.' };
+    const updatedUser = await this.authService.verifyPhone(user.userId, code);
+    return { message: 'Teléfono verificado correctamente.', user: updatedUser };
+  }
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  async getMe(@CurrentUser() user: JwtUser) {
+    return this.authService.getMe(user.userId);
   }
 
   @Get('google')

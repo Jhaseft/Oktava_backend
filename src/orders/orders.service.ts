@@ -1,5 +1,7 @@
 import {
   BadRequestException,
+  HttpException,
+  HttpStatus,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -65,6 +67,15 @@ export class OrdersService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(userId: string, dto: CreateOrderDto) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('Usuario no encontrado.');
+    if (!user.phoneVerified) {
+      throw new HttpException(
+        { code: 'PHONE_NOT_VERIFIED', message: 'Debes verificar tu número de teléfono antes de realizar un pedido.' },
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
     if (dto.items.length === 0) {
       throw new BadRequestException('El pedido debe tener al menos un producto.');
     }

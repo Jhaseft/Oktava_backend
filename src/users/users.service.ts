@@ -73,7 +73,14 @@ export class UsersService {
   }
 
   async updatePhone(userId: string, phone: string): Promise<void> {
-    await this.prisma.user.update({ where: { id: userId }, data: { phone } });
+    const current = await this.prisma.user.findUnique({ where: { id: userId } });
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        phone,
+        ...(current?.phone !== phone && { phoneVerified: false }),
+      },
+    });
   }
 
   // ─── Admin-facing methods ──────────────────────────────────────────────────
@@ -155,7 +162,10 @@ export class UsersService {
       data: {
         ...(dto.firstName !== undefined && { firstName: dto.firstName }),
         ...(dto.lastName !== undefined && { lastName: dto.lastName }),
-        ...(dto.phone !== undefined && { phone: dto.phone }),
+        ...(dto.phone !== undefined && {
+          phone: dto.phone,
+          ...(dto.phone !== user.phone && { phoneVerified: false }),
+        }),
         ...(dto.isActive !== undefined && { isActive: dto.isActive }),
       },
     });
