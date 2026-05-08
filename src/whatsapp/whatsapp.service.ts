@@ -59,6 +59,16 @@ export class WhatsappService {
 
     if (!response.ok) {
       this.logger.error(`Evolution API rechazó la solicitud [${response.status}]: ${responseBody}`);
+
+      let parsed: { response?: { message?: string } } = {};
+      try { parsed = JSON.parse(responseBody); } catch { /* not JSON */ }
+
+      if (parsed?.response?.message === 'Connection Closed') {
+        throw new ServiceUnavailableException(
+          'La instancia de WhatsApp no está conectada. Contacte al administrador.',
+        );
+      }
+
       throw new InternalServerErrorException('Error al enviar mensaje de WhatsApp');
     }
 
