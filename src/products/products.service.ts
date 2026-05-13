@@ -133,6 +133,21 @@ export class ProductsService {
 
   async findAllProducts() {
     const products = await this.prisma.product.findMany({
+      where: { isAvailable: true },
+      include: {
+        category: true,
+        variants: {
+          orderBy: { id: 'asc' },
+          take: 1,
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return products.map((p) => this.mapProduct(p));
+  }
+
+  async findAllProductsAdmin() {
+    const products = await this.prisma.product.findMany({
       include: {
         category: true,
         variants: {

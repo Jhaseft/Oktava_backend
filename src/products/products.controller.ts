@@ -83,12 +83,20 @@ export class ProductsController {
     return this.productsService.findAllProducts();
   }
 
+  // ─── Products — admin ──────────────────────────────────────────────────────
+
+  /** GET /products/admin — all products including inactive (must be before /:id) */
+  @Get('products/admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  findAllProductsAdmin() {
+    return this.productsService.findAllProductsAdmin();
+  }
+
   @Get('products/:id')
   findProductById(@Param('id') id: string) {
     return this.productsService.findOneProduct(id);
   }
-
-  // ─── Products — admin ──────────────────────────────────────────────────────
 
   @Post('products/upload')
   @UseGuards(JwtAuthGuard, RolesGuard)
