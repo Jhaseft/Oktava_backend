@@ -72,6 +72,24 @@ export class UsersService {
     });
   }
 
+  async setPasswordResetToken(userId: string, hashedToken: string, expiry: Date): Promise<void> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordResetToken: hashedToken, passwordResetExpiry: expiry },
+    });
+  }
+
+  async findByPasswordResetToken(hashedToken: string): Promise<User | null> {
+    return this.prisma.user.findFirst({ where: { passwordResetToken: hashedToken } });
+  }
+
+  async updatePasswordAndClearResetToken(userId: string, hashedPassword: string): Promise<void> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { password: hashedPassword, passwordResetToken: null, passwordResetExpiry: null },
+    });
+  }
+
   async updatePhone(userId: string, phone: string): Promise<void> {
     const current = await this.prisma.user.findUnique({ where: { id: userId } });
     await this.prisma.user.update({

@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import * as crypto from 'crypto';
 import { LoginDto } from './dto/login.dto';
 import { SignUpDto } from './dto/sign-up.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -13,6 +14,7 @@ import type { User } from '@prisma/client';
 import { JwtService } from '@nestjs/jwt';
 import { MailService } from 'src/mail/mail.service';
 import { WhatsappService } from 'src/whatsapp/whatsapp.service';
+import { ConfigService } from '@nestjs/config';
 
 interface PendingCode {
   code: string;
@@ -39,6 +41,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly mailService: MailService,
     private readonly whatsappService: WhatsappService,
+    private readonly configService: ConfigService,
   ) {}
 
   // ─── Email OTP ─────────────────────────────────────────────────────────────
@@ -172,6 +175,50 @@ export class AuthService {
     const user = await this.usersService.findOrCreateGoogleUser(googleUser);
     const { password: _, ...userWithoutPassword } = user;
     return this.generateTokenResponse(userWithoutPassword);
+  }
+
+  // ─── Forgot / Reset Password ───────────────────────────────────────────────
+
+  async forgotPassword(email: string): Promise<void> {
+    const user = await this.usersService.findOneByEmail(email);
+
+    // Respuesta siempre igual: no revelar si el email existe
+    if (!user) return;
+
+    // Código de 6 dígitos. Se hashea atado al email para que el hash
+    // sea único por usuario incluso si dos usuarios reciben el mismo código.
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const hashedToken = crypto
+      .createHash('sha256')
+      .update(`${user.email.toLowerCase()}:${code}`)
+      .digest('hex');
+    const expiry = new Date(Date.now() + 15 * 60 * 1000); // 15 minutos
+
+    await this.usersService.setPasswordResetToken(user.id, hashedToken, expiry);
+    await this.mailService.sendPasswordResetEmail(user.email, code);
+  }
+
+  async resetPassword(email: string, code: string, newPassword: string): Promise<void> {
+    const user = await this.usersService.findOneByEmail(email);
+
+    const hashedToken = user
+      ? crypto.createHash('sha256').update(`${user.email.toLowerCase()}:${code}`).digest('hex')
+      : null;
+
+    // Validación unificada: no revelar si el email existe, el código es incorrecto
+    // o el código expiró. Todos los casos dan el mismo error.
+    if (
+      !user ||
+      !user.passwordResetToken ||
+      !user.passwordResetExpiry ||
+      user.passwordResetToken !== hashedToken ||
+      user.passwordResetExpiry < new Date()
+    ) {
+      throw new BadRequestException('El código es inválido o ha expirado.');
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await this.usersService.updatePasswordAndClearResetToken(user.id, hashedPassword);
   }
 
   private generateTokenResponse(user: Omit<User, 'password'>) {
