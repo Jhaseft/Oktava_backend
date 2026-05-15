@@ -5,6 +5,11 @@ import { AdminUpdateUserDto } from './dto/admin-update-user.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { QueryUsersDto } from './dto/query-users.dto';
 
+function normalizePhone(raw: string): string {
+  const stripped = raw.replace(/[\s\-().]/g, '');
+  return stripped.startsWith('+') ? stripped : `+${stripped}`;
+}
+
 type ClientSegment = 'vip' | 'frequent' | 'new';
 
 function deriveSegment(totalOrders: number): ClientSegment {
@@ -175,14 +180,15 @@ export class UsersService {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException(`User ${id} not found`);
 
+    const normalizedPhone = dto.phone !== undefined ? normalizePhone(dto.phone) : undefined;
     const updated = await this.prisma.user.update({
       where: { id },
       data: {
         ...(dto.firstName !== undefined && { firstName: dto.firstName }),
         ...(dto.lastName !== undefined && { lastName: dto.lastName }),
-        ...(dto.phone !== undefined && {
-          phone: dto.phone,
-          ...(dto.phone !== user.phone && { phoneVerified: false }),
+        ...(normalizedPhone !== undefined && {
+          phone: normalizedPhone,
+          ...(normalizedPhone !== user.phone && { phoneVerified: false }),
         }),
         ...(dto.isActive !== undefined && { isActive: dto.isActive }),
       },

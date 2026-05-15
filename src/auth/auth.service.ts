@@ -31,6 +31,11 @@ function makeCode() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
+function normalizePhone(raw: string): string {
+  const stripped = raw.replace(/[\s\-().]/g, '');
+  return stripped.startsWith('+') ? stripped : `+${stripped}`;
+}
+
 @Injectable()
 export class AuthService {
   private readonly pendingEmailCodes  = new Map<string, PendingCode>();
@@ -154,20 +159,19 @@ export class AuthService {
       firstName: dto.firstName,
       lastName: dto.lastName,
       email: dto.email,
-      phone: dto.phone || undefined,
+      phone: dto.phone ? normalizePhone(dto.phone) : undefined,
       password: hashedPassword,
     });
     return this.generateTokenResponse(createdUser);
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto) {
-    if (dto.phone) {
-      const existing = await this.usersService.findOneByPhone(dto.phone);
-      if (existing && existing.id !== userId) {
-        throw new ConflictException('Este número ya está registrado por otro usuario.');
-      }
+    const phone = normalizePhone(dto.phone);
+    const existing = await this.usersService.findOneByPhone(phone);
+    if (existing && existing.id !== userId) {
+      throw new ConflictException('Este número ya está registrado por otro usuario.');
     }
-    await this.usersService.updatePhone(userId, dto.phone);
+    await this.usersService.updatePhone(userId, phone);
     return { message: 'Perfil actualizado.' };
   }
 
