@@ -274,4 +274,10 @@ export class ProductsService {
     });
     return { message: `Product ${id} deactivated` };
   }
+
+  async hardDelete(id: string) {
+    await this.findOneProduct(id);
+    await this.prisma.product.delete({ where: { id } });
+    return { message: `Product ${id} permanently deleted` };
+  }
 }

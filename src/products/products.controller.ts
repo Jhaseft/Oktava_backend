@@ -140,4 +140,11 @@ export class ProductsController {
   softDelete(@Param('id') id: string) {
     return this.productsService.softDelete(id);
   }
+
+  @Delete('products/:id/permanently')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  hardDelete(@Param('id') id: string) {
+    return this.productsService.hardDelete(id);
+  }
 }
