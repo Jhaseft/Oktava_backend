@@ -41,6 +41,8 @@ model User {
   phone           String?   @unique
   phoneVerified   Boolean   @default(false) @map("phone_verified")
   password     String?   @map("password_hash")
+  googleId     String?   @unique @map("google_id")
+  provider     String?   @default("email")
   role         Role      @default(CUSTOMER)
   lastLogin    DateTime? @map("last_login")
   isActive             Boolean   @default(true) @map("is_active")

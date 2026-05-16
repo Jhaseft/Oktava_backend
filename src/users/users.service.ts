@@ -57,15 +57,38 @@ export class UsersService {
     email: string;
     firstName: string;
     lastName: string;
+    googleId?: string;
   }): Promise<User> {
-    const existing = await this.findOneByEmail(googleUser.email);
-    if (existing) return existing;
+    // 1. Buscar por googleId si se proporcionó
+    if (googleUser.googleId) {
+      const byGoogleId = await this.prisma.user.findUnique({
+        where: { googleId: googleUser.googleId },
+      });
+      if (byGoogleId) return byGoogleId;
+    }
 
+    // 2. Buscar por email
+    const byEmail = await this.findOneByEmail(googleUser.email);
+
+    if (byEmail) {
+      // Si ya existe por email pero no tiene googleId, vincularlo
+      if (googleUser.googleId && !byEmail.googleId) {
+        return this.prisma.user.update({
+          where: { id: byEmail.id },
+          data: { googleId: googleUser.googleId, provider: 'google' },
+        });
+      }
+      return byEmail;
+    }
+
+    // 3. Crear usuario nuevo con campos de Google
     return this.prisma.user.create({
       data: {
         email: googleUser.email,
         firstName: googleUser.firstName,
         lastName: googleUser.lastName,
+        googleId: googleUser.googleId,
+        provider: googleUser.googleId ? 'google' : 'email',
       },
     });
   }

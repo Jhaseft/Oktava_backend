@@ -22,6 +22,7 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { GoogleAuthGuard } from './guards/google-auth.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
+import { GoogleMobileAuthDto } from './dto/google-mobile-auth.dto';
 import type { Request, Response } from 'express';
 
 interface JwtUser { userId: string; }
@@ -95,6 +96,12 @@ export class AuthController {
   async resetPassword(@Body() dto: ResetPasswordDto) {
     await this.authService.resetPassword(dto.email, dto.code, dto.newPassword);
     return { message: 'Contraseña actualizada correctamente.' };
+  }
+
+  @Post('google/mobile')
+  @HttpCode(HttpStatus.OK)
+  async googleMobileAuth(@Body() dto: GoogleMobileAuthDto) {
+    return this.authService.googleMobileLogin(dto.idToken);
   }
 
   @Get('google')

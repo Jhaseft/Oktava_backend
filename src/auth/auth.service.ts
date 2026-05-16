@@ -3,7 +3,9 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
+import { OAuth2Client, type TokenPayload } from 'google-auth-library';
 import * as crypto from 'crypto';
 import { LoginDto } from './dto/login.dto';
 import { SignUpDto } from './dto/sign-up.dto';
@@ -177,6 +179,33 @@ export class AuthService {
 
   async googleLogin(googleUser: { email: string; firstName: string; lastName: string }) {
     const user = await this.usersService.findOrCreateGoogleUser(googleUser);
+    const { password: _, ...userWithoutPassword } = user;
+    return this.generateTokenResponse(userWithoutPassword);
+  }
+
+  async googleMobileLogin(idToken: string) {
+    const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
+    const client = new OAuth2Client(clientId);
+
+    let payload: TokenPayload | undefined;
+    try {
+      const ticket = await client.verifyIdToken({ idToken, audience: clientId });
+      payload = ticket.getPayload();
+    } catch {
+      throw new UnauthorizedException('Token de Google inválido o expirado.');
+    }
+
+    if (!payload?.email) {
+      throw new UnauthorizedException('No se pudo obtener el email desde Google.');
+    }
+
+    const user = await this.usersService.findOrCreateGoogleUser({
+      email: payload.email,
+      firstName: payload.given_name ?? '',
+      lastName: payload.family_name ?? '',
+      googleId: payload.sub,
+    });
+
     const { password: _, ...userWithoutPassword } = user;
     return this.generateTokenResponse(userWithoutPassword);
   }
