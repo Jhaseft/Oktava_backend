@@ -105,31 +105,48 @@ model Product {
   categoryId  String   @map("category_id")
   name        String
   description String?
+  includes    String?
   imageUrl    String?  @map("image_url")
+  price       Decimal  @db.Decimal(10, 2)
   isAvailable Boolean  @default(true) @map("is_available")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  category Category         @relation(fields: [categoryId], references: [id])
-  variants ProductVariant[]
+  category     Category       @relation(fields: [categoryId], references: [id])
+  optionGroups OptionGroup[]
+  orderItems   OrderItem[] 
 
   @@map("products")
 }
 
-// Una variante define el tamaño/presentación y su precio.
-// Ej: "Personal – Bs. 35", "Familiar – Bs. 95", "Combo Duo – Bs. 68"
-model ProductVariant {
-  id          String  @id @default(uuid())
-  productId   String  @map("product_id")
-  name        String  // "Personal", "Familiar", "Combo", etc.
-  price       Decimal @db.Decimal(10, 2)
-  isAvailable Boolean @default(true) @map("is_available")
+model OptionGroup {
+  id            String  @id @default(uuid())
+  productId     String  @map("product_id")
+  name          String  // "Elige tu presa"
+  isRequired    Boolean @default(true) @map("is_required")
+  minSelections Int     @default(1)    @map("min_selections")
+  maxSelections Int     @default(1)    @map("max_selections")
+  sortOrder     Int     @default(0)    @map("sort_order")
 
-  product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
-  orderItems OrderItem[]
+  product Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  options Option[]
 
-  @@map("product_variants")
+  @@map("option_groups")
 }
+model Option {
+  id          String  @id @default(uuid())
+  groupId     String  @map("group_id")
+  name        String  // "Pierna + Entrepierna", "Pecho + Ala"
+  extraPrice  Decimal @default(0) @map("extra_price") @db.Decimal(10, 2)
+  isAvailable Boolean @default(true) @map("is_available")
+  sortOrder   Int     @default(0)    @map("sort_order")
+
+  group               OptionGroup      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  orderItemSelections OrderItemOption[]
+
+  @@map("options")
+}
+
 
 
 // ─────────────────────────────────────────────
@@ -157,20 +174,32 @@ model Order {
   @@map("orders")
 }
 
-// Snapshot del producto al momento de comprar
-// (nombre y precio quedan guardados aunque el catálogo cambie)
 model OrderItem {
   id          String  @id @default(uuid())
   orderId     String  @map("order_id")
-  variantId   String  @map("variant_id")
-  productName String  @map("product_name")
-  variantName String  @map("variant_name")
+  productId   String  @map("product_id")   // ← reemplaza variantId
+  productName String  @map("product_name") // snapshot del nombre
+  // variantName ya no existe
   quantity    Int
   unitPrice   Decimal @db.Decimal(10, 2) @map("unit_price")
   subtotal    Decimal @db.Decimal(10, 2)
+  notes       String? // instrucciones especiales del item
 
-  order   Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  variant ProductVariant @relation(fields: [variantId], references: [id])
+  order           Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product         Product         @relation(fields: [productId], references: [id])
+  selectedOptions OrderItemOption[]
 
   @@map("order_items")
+}
+model OrderItemOption {
+  id          String  @id @default(uuid())
+  orderItemId String  @map("order_item_id")
+  optionId    String  @map("option_id")
+  optionName  String  @map("option_name") // snapshot
+  extraPrice  Decimal @map("extra_price") @db.Decimal(10, 2) // snapshot
+
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id])
+  option    Option    @relation(fields: [optionId], references: [id])
+
+  @@map("order_item_options")
 }
