@@ -6,12 +6,15 @@ import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
+import { json, urlencoded } from 'express';
 
 async function bootstrap() {
   const uploadsDir = join(process.cwd(), 'public', 'uploads');
   if (!existsSync(uploadsDir)) mkdirSync(uploadsDir, { recursive: true });
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  app.use(json({ limit: '10mb' }));
+  app.use(urlencoded({ extended: true, limit: '10mb' }));
   app.useStaticAssets(uploadsDir, { prefix: '/uploads' });
   const logger = new Logger('Bootstrap');
   // Obtener el ConfigService

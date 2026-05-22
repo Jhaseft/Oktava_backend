@@ -40,6 +40,7 @@ function mapOption(o: any) {
     extraPrice: Number(o.extraPrice),
     isAvailable: o.isAvailable,
     sortOrder: o.sortOrder,
+    imageUrl: o.imageUrl ?? null,
   };
 }
 
@@ -220,6 +221,7 @@ export class ProductsService {
                   extraPrice: o.extraPrice ?? 0,
                   isAvailable: o.isAvailable ?? true,
                   sortOrder: o.sortOrder ?? oi,
+                  ...(o.imageUrl && { imageUrl: o.imageUrl }),
                 })),
               },
             })),
@@ -288,6 +290,7 @@ export class ProductsService {
             extraPrice: o.extraPrice ?? 0,
             isAvailable: o.isAvailable ?? true,
             sortOrder: o.sortOrder ?? i,
+            ...(o.imageUrl && { imageUrl: o.imageUrl }),
           })),
         },
       },
@@ -337,6 +340,7 @@ export class ProductsService {
         extraPrice: dto.extraPrice ?? 0,
         isAvailable: dto.isAvailable ?? true,
         sortOrder: dto.sortOrder ?? 0,
+        ...(dto.imageUrl && { imageUrl: dto.imageUrl }),
       },
     });
 
@@ -356,6 +360,7 @@ export class ProductsService {
         ...(dto.extraPrice !== undefined && { extraPrice: dto.extraPrice }),
         ...(dto.isAvailable !== undefined && { isAvailable: dto.isAvailable }),
         ...(dto.sortOrder !== undefined && { sortOrder: dto.sortOrder }),
+        ...(dto.imageUrl !== undefined && { imageUrl: dto.imageUrl || null }),
       },
     });
 

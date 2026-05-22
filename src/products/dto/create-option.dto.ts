@@ -28,4 +28,8 @@ export class CreateOptionDto {
   @IsInt()
   @Type(() => Number)
   sortOrder?: number;
+
+  @IsOptional()
+  @IsString()
+  imageUrl?: string;
 }
