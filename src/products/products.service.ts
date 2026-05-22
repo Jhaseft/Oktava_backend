@@ -197,39 +197,36 @@ export class ProductsService {
   async create(dto: CreateProductDto) {
     const { optionGroups, ...productFields } = dto;
 
-    const product = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.product.create({
-        data: {
-          name: productFields.name,
-          description: productFields.description,
-          includes: productFields.includes,
-          imageUrl: productFields.imageUrl,
-          categoryId: productFields.categoryId,
-          price: productFields.price,
-          isAvailable: productFields.isAvailable ?? true,
-          ...(optionGroups?.length && {
-            optionGroups: {
-              create: optionGroups.map((g, gi) => ({
-                name: g.name,
-                isRequired: g.isRequired ?? true,
-                minSelections: g.minSelections ?? 1,
-                maxSelections: g.maxSelections ?? 1,
-                sortOrder: g.sortOrder ?? gi,
-                options: {
-                  create: (g.options ?? []).map((o, oi) => ({
-                    name: o.name,
-                    extraPrice: o.extraPrice ?? 0,
-                    isAvailable: o.isAvailable ?? true,
-                    sortOrder: o.sortOrder ?? oi,
-                  })),
-                },
-              })),
-            },
-          }),
-        },
-        include: PRODUCT_INCLUDE,
-      });
-      return created;
+    const product = await this.prisma.product.create({
+      data: {
+        name: productFields.name,
+        description: productFields.description,
+        includes: productFields.includes,
+        imageUrl: productFields.imageUrl,
+        categoryId: productFields.categoryId,
+        price: productFields.price,
+        isAvailable: productFields.isAvailable ?? true,
+        ...(optionGroups?.length && {
+          optionGroups: {
+            create: optionGroups.map((g, gi) => ({
+              name: g.name,
+              isRequired: g.isRequired ?? true,
+              minSelections: g.minSelections ?? 1,
+              maxSelections: g.maxSelections ?? 1,
+              sortOrder: g.sortOrder ?? gi,
+              options: {
+                create: (g.options ?? []).map((o, oi) => ({
+                  name: o.name,
+                  extraPrice: o.extraPrice ?? 0,
+                  isAvailable: o.isAvailable ?? true,
+                  sortOrder: o.sortOrder ?? oi,
+                })),
+              },
+            })),
+          },
+        }),
+      },
+      include: PRODUCT_INCLUDE,
     });
 
     return this.mapProduct(product);
