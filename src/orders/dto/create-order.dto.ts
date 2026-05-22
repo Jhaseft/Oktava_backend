@@ -2,6 +2,8 @@ import {
   IsArray,
   IsEnum,
   IsInt,
+  IsNotEmpty,
+  IsNumber,
   IsOptional,
   IsString,
   IsUUID,
@@ -11,6 +13,20 @@ import {
 import { Type } from 'class-transformer';
 import { OrderType } from '@prisma/client';
 
+export class SelectedOptionDto {
+  @IsUUID()
+  optionId: string;
+
+  @IsString()
+  @IsNotEmpty()
+  optionName: string;
+
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  extraPrice: number;
+}
+
 export class OrderItemDto {
   @IsUUID()
   productId: string;
@@ -18,6 +34,12 @@ export class OrderItemDto {
   @IsInt()
   @Min(1)
   quantity: number;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SelectedOptionDto)
+  selectedOptions?: SelectedOptionDto[];
 }
 
 export class CreateOrderDto {

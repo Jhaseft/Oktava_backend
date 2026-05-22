@@ -114,19 +114,22 @@ export class OrdersService {
 
     // Resolve each product and its price
     const resolvedItems = await Promise.all(
-      dto.items.map(async ({ productId, quantity }) => {
+      dto.items.map(async ({ productId, quantity, selectedOptions }) => {
         const product = await this.prisma.product.findFirst({
           where: { id: productId, isAvailable: true },
         });
         if (!product) {
           throw new NotFoundException(`Producto ${productId} no encontrado o no disponible.`);
         }
-        return { product, quantity };
+        return { product, quantity, selectedOptions: selectedOptions ?? [] };
       }),
     );
 
     const subtotal = resolvedItems.reduce(
-      (acc, { product, quantity }) => acc + Number(product.price) * quantity,
+      (acc, { product, quantity, selectedOptions }) => {
+        const extrasTotal = selectedOptions.reduce((s, o) => s + o.extraPrice, 0);
+        return acc + (Number(product.price) + extrasTotal) * quantity;
+      },
       0,
     );
     const total = subtotal + deliveryFee;
@@ -150,13 +153,25 @@ export class OrdersService {
         total,
         notes: dto.notes ?? null,
         items: {
-          create: resolvedItems.map(({ product, quantity }) => ({
-            productId: product.id,
-            productName: product.name,
-            quantity,
-            unitPrice: Number(product.price),
-            subtotal: Number(product.price) * quantity,
-          })),
+          create: resolvedItems.map(({ product, quantity, selectedOptions }) => {
+            const extrasTotal = selectedOptions.reduce((s, o) => s + o.extraPrice, 0);
+            return {
+              productId: product.id,
+              productName: product.name,
+              quantity,
+              unitPrice: Number(product.price),
+              subtotal: (Number(product.price) + extrasTotal) * quantity,
+              ...(selectedOptions.length > 0 && {
+                selectedOptions: {
+                  create: selectedOptions.map((opt) => ({
+                    optionId: opt.optionId,
+                    optionName: opt.optionName,
+                    extraPrice: opt.extraPrice,
+                  })),
+                },
+              }),
+            };
+          }),
         },
       },
       include: {
