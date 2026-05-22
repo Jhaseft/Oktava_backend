@@ -51,6 +51,12 @@ function mapOrder(o: any) {
       ...i,
       unitPrice: Number(i.unitPrice),
       subtotal: Number(i.subtotal),
+      selectedOptions: (i.selectedOptions ?? []).map((opt: any) => ({
+        id: opt.id,
+        optionId: opt.optionId,
+        optionName: opt.optionName,
+        extraPrice: Number(opt.extraPrice),
+      })),
     })),
     address: o.address
       ? {
@@ -154,7 +160,7 @@ export class OrdersService {
         },
       },
       include: {
-        items: true,
+        items: { include: { selectedOptions: true } },
         address: true,
       },
     });
@@ -166,7 +172,7 @@ export class OrdersService {
     const orders = await this.prisma.order.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
-      include: { items: true, address: true },
+      include: { items: { include: { selectedOptions: true } }, address: true },
     });
     return orders.map(mapOrder);
   }
@@ -176,7 +182,7 @@ export class OrdersService {
       where: status ? { status } : undefined,
       orderBy: { createdAt: 'desc' },
       include: {
-        items: true,
+        items: { include: { selectedOptions: true } },
         address: true,
         user: {
           select: { id: true, firstName: true, lastName: true, email: true, phone: true },
@@ -193,7 +199,7 @@ export class OrdersService {
       where: { id },
       data: { status },
       include: {
-        items: true,
+        items: { include: { selectedOptions: true } },
         address: true,
         user: {
           select: { id: true, firstName: true, lastName: true, email: true, phone: true },
@@ -212,7 +218,7 @@ export class OrdersService {
     const updated = await this.prisma.order.update({
       where: { id: orderId },
       data: { status: OrderStatus.COMPLETED },
-      include: { items: true, address: true },
+      include: { items: { include: { selectedOptions: true } }, address: true },
     });
     return mapOrder(updated);
   }
