@@ -153,25 +153,13 @@ export class OrdersService {
         total,
         notes: dto.notes ?? null,
         items: {
-          create: resolvedItems.map(({ product, quantity, selectedOptions }) => {
-            const extrasTotal = selectedOptions.reduce((s, o) => s + o.extraPrice, 0);
-            return {
-              productId: product.id,
-              productName: product.name,
-              quantity,
-              unitPrice: Number(product.price),
-              subtotal: (Number(product.price) + extrasTotal) * quantity,
-              ...(selectedOptions.length > 0 && {
-                selectedOptions: {
-                  create: selectedOptions.map((opt) => ({
-                    optionId: opt.optionId,
-                    optionName: opt.optionName,
-                    extraPrice: opt.extraPrice,
-                  })),
-                },
-              }),
-            };
-          }),
+          create: resolvedItems.map(({ product, quantity }) => ({
+            productId: product.id,
+            productName: product.name,
+            quantity,
+            unitPrice: Number(product.price),
+            subtotal: Number(product.price) * quantity,
+          })),
         },
       },
       include: {
