@@ -6,7 +6,9 @@ import {
   IsOptional,
   IsString,
   Min,
+  ValidateNested,
 } from 'class-validator';
+import { CreateOptionGroupDto } from './create-option-group.dto';
 
 export class CreateProductDto {
   @IsString()
@@ -19,17 +21,16 @@ export class CreateProductDto {
 
   @IsOptional()
   @IsString()
+  includes?: string;
+
+  @IsOptional()
+  @IsString()
   imageUrl?: string;
 
   @IsString()
   @IsNotEmpty()
   categoryId: string;
 
-  /**
-   * Precio base del producto. Se persiste en la variante "Base" de ProductVariant.
-   * Decisión de diseño v1: el admin opera con un precio único por producto.
-   * Las variantes adicionales (Personal, Familiar, etc.) quedan para la app de cliente.
-   */
   @IsNumber()
   @Min(0)
   @Type(() => Number)
@@ -38,4 +39,9 @@ export class CreateProductDto {
   @IsOptional()
   @IsBoolean()
   isAvailable?: boolean;
+
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => CreateOptionGroupDto)
+  optionGroups?: CreateOptionGroupDto[];
 }

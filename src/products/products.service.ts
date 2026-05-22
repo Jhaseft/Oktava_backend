@@ -8,12 +8,14 @@ import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import { CreateOptionGroupDto } from './dto/create-option-group.dto';
+import { CreateOptionDto } from './dto/create-option.dto';
 
 function slugify(name: string): string {
   return name
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[̀-ͯ]/g, '')
     .trim()
     .replace(/\s+/g, '-')
     .replace(/[^\w-]/g, '')
@@ -31,6 +33,38 @@ function mapCategory(c: any) {
   };
 }
 
+function mapOption(o: any) {
+  return {
+    id: o.id,
+    name: o.name,
+    extraPrice: Number(o.extraPrice),
+    isAvailable: o.isAvailable,
+    sortOrder: o.sortOrder,
+  };
+}
+
+function mapOptionGroup(g: any) {
+  return {
+    id: g.id,
+    name: g.name,
+    isRequired: g.isRequired,
+    minSelections: g.minSelections,
+    maxSelections: g.maxSelections,
+    sortOrder: g.sortOrder,
+    options: (g.options ?? []).map(mapOption),
+  };
+}
+
+const PRODUCT_INCLUDE = {
+  category: true,
+  optionGroups: {
+    orderBy: { sortOrder: 'asc' as const },
+    include: {
+      options: { orderBy: { sortOrder: 'asc' as const } },
+    },
+  },
+};
+
 @Injectable()
 export class ProductsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -38,17 +72,18 @@ export class ProductsService {
   // ─── Private product mapper ────────────────────────────────────────────────
 
   private mapProduct(product: any) {
-    const baseVariant = product.variants?.[0];
     return {
       id: product.id,
       name: product.name,
       description: product.description ?? null,
+      includes: product.includes ?? null,
       imageUrl: product.imageUrl ?? null,
       categoryId: product.categoryId,
       category: product.category?.name ?? null,
-      price: baseVariant?.price != null ? Number(baseVariant.price) : null,
+      price: product.price == null ? null : Number(product.price),
       status: product.isAvailable ? 'active' : 'inactive',
       isAvailable: product.isAvailable,
+      optionGroups: (product.optionGroups ?? []).map(mapOptionGroup),
       createdAt: product.createdAt,
       updatedAt: product.updatedAt,
     };
@@ -134,13 +169,7 @@ export class ProductsService {
   async findAllProducts() {
     const products = await this.prisma.product.findMany({
       where: { isAvailable: true },
-      include: {
-        category: true,
-        variants: {
-          orderBy: { id: 'asc' },
-          take: 1,
-        },
-      },
+      include: PRODUCT_INCLUDE,
       orderBy: { createdAt: 'desc' },
     });
     return products.map((p) => this.mapProduct(p));
@@ -148,13 +177,7 @@ export class ProductsService {
 
   async findAllProductsAdmin() {
     const products = await this.prisma.product.findMany({
-      include: {
-        category: true,
-        variants: {
-          orderBy: { id: 'asc' },
-          take: 1,
-        },
-      },
+      include: PRODUCT_INCLUDE,
       orderBy: { createdAt: 'desc' },
     });
     return products.map((p) => this.mapProduct(p));
@@ -163,49 +186,50 @@ export class ProductsService {
   async findOneProduct(id: string) {
     const product = await this.prisma.product.findUnique({
       where: { id },
-      include: {
-        category: true,
-        variants: { orderBy: { id: 'asc' } },
-      },
+      include: PRODUCT_INCLUDE,
     });
 
     if (!product) throw new NotFoundException(`Product ${id} not found`);
 
-    const { variants, ...rest } = product as typeof product & {
-      variants: { id: string; name: string; price: any; isAvailable: boolean }[];
-    };
-
-    return {
-      ...this.mapProduct({ ...rest, variants }),
-      variants: variants.map((v) => ({
-        id: v.id,
-        name: v.name,
-        price: Number(v.price),
-        isAvailable: v.isAvailable,
-      })),
-    };
+    return this.mapProduct(product);
   }
 
   async create(dto: CreateProductDto) {
-    const { price, ...productFields } = dto;
+    const { optionGroups, ...productFields } = dto;
 
     const product = await this.prisma.$transaction(async (tx) => {
-      return tx.product.create({
+      const created = await tx.product.create({
         data: {
           name: productFields.name,
           description: productFields.description,
+          includes: productFields.includes,
           imageUrl: productFields.imageUrl,
           categoryId: productFields.categoryId,
+          price: productFields.price,
           isAvailable: productFields.isAvailable ?? true,
-          variants: {
-            create: { name: 'Base', price, isAvailable: true },
-          },
+          ...(optionGroups?.length && {
+            optionGroups: {
+              create: optionGroups.map((g, gi) => ({
+                name: g.name,
+                isRequired: g.isRequired ?? true,
+                minSelections: g.minSelections ?? 1,
+                maxSelections: g.maxSelections ?? 1,
+                sortOrder: g.sortOrder ?? gi,
+                options: {
+                  create: (g.options ?? []).map((o, oi) => ({
+                    name: o.name,
+                    extraPrice: o.extraPrice ?? 0,
+                    isAvailable: o.isAvailable ?? true,
+                    sortOrder: o.sortOrder ?? oi,
+                  })),
+                },
+              })),
+            },
+          }),
         },
-        include: {
-          category: true,
-          variants: { orderBy: { id: 'asc' }, take: 1 },
-        },
+        include: PRODUCT_INCLUDE,
       });
+      return created;
     });
 
     return this.mapProduct(product);
@@ -214,56 +238,23 @@ export class ProductsService {
   async update(id: string, dto: UpdateProductDto) {
     await this.findOneProduct(id);
 
-    const { price, ...productFields } = dto;
+    const { optionGroups: _og, ...productFields } = dto;
 
-    const updatedProduct = await this.prisma.$transaction(async (tx) => {
-      await tx.product.update({
-        where: { id },
-        data: {
-          ...(productFields.name !== undefined && { name: productFields.name }),
-          ...(productFields.description !== undefined && {
-            description: productFields.description,
-          }),
-          ...(productFields.imageUrl !== undefined && {
-            imageUrl: productFields.imageUrl,
-          }),
-          ...(productFields.categoryId !== undefined && {
-            categoryId: productFields.categoryId,
-          }),
-          ...(productFields.isAvailable !== undefined && {
-            isAvailable: productFields.isAvailable,
-          }),
-        },
-      });
-
-      if (price !== undefined) {
-        const baseVariant = await tx.productVariant.findFirst({
-          where: { productId: id },
-          orderBy: { id: 'asc' },
-        });
-
-        if (baseVariant) {
-          await tx.productVariant.update({
-            where: { id: baseVariant.id },
-            data: { price },
-          });
-        } else {
-          await tx.productVariant.create({
-            data: { productId: id, name: 'Base', price, isAvailable: true },
-          });
-        }
-      }
-
-      return tx.product.findUnique({
-        where: { id },
-        include: {
-          category: true,
-          variants: { orderBy: { id: 'asc' }, take: 1 },
-        },
-      });
+    const updated = await this.prisma.product.update({
+      where: { id },
+      data: {
+        ...(productFields.name !== undefined && { name: productFields.name }),
+        ...(productFields.description !== undefined && { description: productFields.description }),
+        ...(productFields.includes !== undefined && { includes: productFields.includes }),
+        ...(productFields.imageUrl !== undefined && { imageUrl: productFields.imageUrl }),
+        ...(productFields.categoryId !== undefined && { categoryId: productFields.categoryId }),
+        ...(productFields.price !== undefined && { price: productFields.price }),
+        ...(productFields.isAvailable !== undefined && { isAvailable: productFields.isAvailable }),
+      },
+      include: PRODUCT_INCLUDE,
     });
 
-    return this.mapProduct(updatedProduct);
+    return this.mapProduct(updated);
   }
 
   async softDelete(id: string) {
@@ -279,5 +270,108 @@ export class ProductsService {
     await this.findOneProduct(id);
     await this.prisma.product.delete({ where: { id } });
     return { message: `Product ${id} permanently deleted` };
+  }
+
+  // ─── OptionGroups ──────────────────────────────────────────────────────────
+
+  async createOptionGroup(productId: string, dto: CreateOptionGroupDto) {
+    await this.findOneProduct(productId);
+
+    const group = await this.prisma.optionGroup.create({
+      data: {
+        productId,
+        name: dto.name,
+        isRequired: dto.isRequired ?? true,
+        minSelections: dto.minSelections ?? 1,
+        maxSelections: dto.maxSelections ?? 1,
+        sortOrder: dto.sortOrder ?? 0,
+        options: {
+          create: (dto.options ?? []).map((o, i) => ({
+            name: o.name,
+            extraPrice: o.extraPrice ?? 0,
+            isAvailable: o.isAvailable ?? true,
+            sortOrder: o.sortOrder ?? i,
+          })),
+        },
+      },
+      include: { options: { orderBy: { sortOrder: 'asc' } } },
+    });
+
+    return mapOptionGroup(group);
+  }
+
+  async updateOptionGroup(groupId: string, dto: Partial<CreateOptionGroupDto>) {
+    const existing = await this.prisma.optionGroup.findUnique({ where: { id: groupId } });
+    if (!existing) throw new NotFoundException(`OptionGroup ${groupId} not found`);
+
+    const updated = await this.prisma.optionGroup.update({
+      where: { id: groupId },
+      data: {
+        ...(dto.name !== undefined && { name: dto.name }),
+        ...(dto.isRequired !== undefined && { isRequired: dto.isRequired }),
+        ...(dto.minSelections !== undefined && { minSelections: dto.minSelections }),
+        ...(dto.maxSelections !== undefined && { maxSelections: dto.maxSelections }),
+        ...(dto.sortOrder !== undefined && { sortOrder: dto.sortOrder }),
+      },
+      include: { options: { orderBy: { sortOrder: 'asc' } } },
+    });
+
+    return mapOptionGroup(updated);
+  }
+
+  async deleteOptionGroup(groupId: string) {
+    const existing = await this.prisma.optionGroup.findUnique({ where: { id: groupId } });
+    if (!existing) throw new NotFoundException(`OptionGroup ${groupId} not found`);
+
+    await this.prisma.optionGroup.delete({ where: { id: groupId } });
+    return { message: `OptionGroup ${groupId} deleted` };
+  }
+
+  // ─── Options ───────────────────────────────────────────────────────────────
+
+  async createOption(groupId: string, dto: CreateOptionDto) {
+    const group = await this.prisma.optionGroup.findUnique({ where: { id: groupId } });
+    if (!group) throw new NotFoundException(`OptionGroup ${groupId} not found`);
+
+    const option = await this.prisma.option.create({
+      data: {
+        groupId,
+        name: dto.name,
+        extraPrice: dto.extraPrice ?? 0,
+        isAvailable: dto.isAvailable ?? true,
+        sortOrder: dto.sortOrder ?? 0,
+      },
+    });
+
+    return mapOption(option);
+  }
+
+  async updateOption(groupId: string, optionId: string, dto: Partial<CreateOptionDto>) {
+    const option = await this.prisma.option.findFirst({
+      where: { id: optionId, groupId },
+    });
+    if (!option) throw new NotFoundException(`Option ${optionId} not found in group ${groupId}`);
+
+    const updated = await this.prisma.option.update({
+      where: { id: optionId },
+      data: {
+        ...(dto.name !== undefined && { name: dto.name }),
+        ...(dto.extraPrice !== undefined && { extraPrice: dto.extraPrice }),
+        ...(dto.isAvailable !== undefined && { isAvailable: dto.isAvailable }),
+        ...(dto.sortOrder !== undefined && { sortOrder: dto.sortOrder }),
+      },
+    });
+
+    return mapOption(updated);
+  }
+
+  async deleteOption(groupId: string, optionId: string) {
+    const option = await this.prisma.option.findFirst({
+      where: { id: optionId, groupId },
+    });
+    if (!option) throw new NotFoundException(`Option ${optionId} not found in group ${groupId}`);
+
+    await this.prisma.option.delete({ where: { id: optionId } });
+    return { message: `Option ${optionId} deleted` };
   }
 }

@@ -106,23 +106,21 @@ export class OrdersService {
       deliveryFee = calcDeliveryFee(km);
     }
 
-    // Resolve base variant for each product
+    // Resolve each product and its price
     const resolvedItems = await Promise.all(
       dto.items.map(async ({ productId, quantity }) => {
-        const variant = await this.prisma.productVariant.findFirst({
-          where: { productId, isAvailable: true },
-          orderBy: { id: 'asc' },
-          include: { product: true },
+        const product = await this.prisma.product.findFirst({
+          where: { id: productId, isAvailable: true },
         });
-        if (!variant) {
-          throw new NotFoundException(`Producto ${productId} no encontrado o sin variante disponible.`);
+        if (!product) {
+          throw new NotFoundException(`Producto ${productId} no encontrado o no disponible.`);
         }
-        return { variant, quantity };
+        return { product, quantity };
       }),
     );
 
     const subtotal = resolvedItems.reduce(
-      (acc, { variant, quantity }) => acc + Number(variant.price) * quantity,
+      (acc, { product, quantity }) => acc + Number(product.price) * quantity,
       0,
     );
     const total = subtotal + deliveryFee;
@@ -146,13 +144,12 @@ export class OrdersService {
         total,
         notes: dto.notes ?? null,
         items: {
-          create: resolvedItems.map(({ variant, quantity }) => ({
-            variantId: variant.id,
-            productName: variant.product.name,
-            variantName: variant.name,
+          create: resolvedItems.map(({ product, quantity }) => ({
+            productId: product.id,
+            productName: product.name,
             quantity,
-            unitPrice: Number(variant.price),
-            subtotal: Number(variant.price) * quantity,
+            unitPrice: Number(product.price),
+            subtotal: Number(product.price) * quantity,
           })),
         },
       },

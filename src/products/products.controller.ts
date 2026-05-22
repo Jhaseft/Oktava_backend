@@ -22,6 +22,8 @@ import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import { CreateOptionGroupDto } from './dto/create-option-group.dto';
+import { CreateOptionDto } from './dto/create-option.dto';
 import { ProductsService } from './products.service';
 
 const ALLOWED_MIME = /image\/(jpeg|jpg|png|gif|webp)/;
@@ -146,5 +148,67 @@ export class ProductsController {
   @Roles(Role.ADMIN)
   hardDelete(@Param('id') id: string) {
     return this.productsService.hardDelete(id);
+  }
+
+  // ─── OptionGroups ──────────────────────────────────────────────────────────
+
+  /** POST /products/:id/option-groups */
+  @Post('products/:id/option-groups')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  createOptionGroup(@Param('id') productId: string, @Body() dto: CreateOptionGroupDto) {
+    return this.productsService.createOptionGroup(productId, dto);
+  }
+
+  /** PATCH /option-groups/:groupId */
+  @Patch('option-groups/:groupId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  updateOptionGroup(
+    @Param('groupId') groupId: string,
+    @Body() dto: Partial<CreateOptionGroupDto>,
+  ) {
+    return this.productsService.updateOptionGroup(groupId, dto);
+  }
+
+  /** DELETE /option-groups/:groupId — cascade deletes its Options */
+  @Delete('option-groups/:groupId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  deleteOptionGroup(@Param('groupId') groupId: string) {
+    return this.productsService.deleteOptionGroup(groupId);
+  }
+
+  // ─── Options ───────────────────────────────────────────────────────────────
+
+  /** POST /option-groups/:groupId/options */
+  @Post('option-groups/:groupId/options')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  createOption(@Param('groupId') groupId: string, @Body() dto: CreateOptionDto) {
+    return this.productsService.createOption(groupId, dto);
+  }
+
+  /** PATCH /option-groups/:groupId/options/:optionId */
+  @Patch('option-groups/:groupId/options/:optionId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  updateOption(
+    @Param('groupId') groupId: string,
+    @Param('optionId') optionId: string,
+    @Body() dto: Partial<CreateOptionDto>,
+  ) {
+    return this.productsService.updateOption(groupId, optionId, dto);
+  }
+
+  /** DELETE /option-groups/:groupId/options/:optionId */
+  @Delete('option-groups/:groupId/options/:optionId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  deleteOption(
+    @Param('groupId') groupId: string,
+    @Param('optionId') optionId: string,
+  ) {
+    return this.productsService.deleteOption(groupId, optionId);
   }
 }
