@@ -72,7 +72,11 @@ function mapOrder(o: any) {
 export class OrdersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(userId: string, dto: CreateOrderDto) {
+  async create(
+    userId: string,
+    dto: CreateOrderDto,
+    initialStatus: OrderStatus = OrderStatus.PENDING,
+  ) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('Usuario no encontrado.');
     if (!user.phoneVerified) {
@@ -148,6 +152,7 @@ export class OrdersService {
         userId,
         addressId: dto.addressId ?? null,
         orderType: dto.orderType,
+        status: initialStatus,
         subtotal,
         deliveryFee,
         total,

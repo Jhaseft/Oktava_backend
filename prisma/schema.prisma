@@ -21,12 +21,14 @@ enum OrderType {
 }
 
 enum OrderStatus {
-  PENDING        // Recibido, esperando confirmación
-  PREPARING      // En cocina preparando
-  ON_THE_WAY     // En camino (solo DELIVERY)
-  PICKED_UP      // listo para recoger en local (solo PICKUP)
-  CANCELLED      // Cancelado
-  COMPLETED      // Pedido completado con exito
+  PENDING_PAYMENT // Orden creada, esperando confirmación de pago
+  PENDING // Recibido, esperando confirmación (pago confirmado)
+  PREPARING // En cocina preparando
+  ON_THE_WAY // En camino (solo DELIVERY)
+  PICKED_UP // listo para recoger en local (solo PICKUP)
+  PAYMENT_FAILED // Pago rechazado o fallido
+  CANCELLED // Cancelado
+  COMPLETED // Pedido completado con exito
 }
 
 // ─────────────────────────────────────────────
@@ -34,25 +36,26 @@ enum OrderStatus {
 // ─────────────────────────────────────────────
 
 model User {
-  id           String    @id @default(uuid())
-  firstName    String
-  lastName     String
-  email        String    @unique
-  phone           String?   @unique
-  phoneVerified   Boolean   @default(false) @map("phone_verified")
-  password     String?   @map("password_hash")
-  googleId     String?   @unique @map("google_id")
-  provider     String?   @default("email")
-  role         Role      @default(CUSTOMER)
-  lastLogin    DateTime? @map("last_login")
-  isActive             Boolean   @default(true) @map("is_active")
-  passwordResetToken   String?   @map("password_reset_token")
-  passwordResetExpiry  DateTime? @map("password_reset_expiry")
-  createdAt            DateTime  @default(now()) @map("created_at")
-  updatedAt            DateTime  @updatedAt @map("updated_at")
+  id                  String    @id @default(uuid())
+  firstName           String
+  lastName            String
+  email               String    @unique
+  phone               String?   @unique
+  phoneVerified       Boolean   @default(false) @map("phone_verified")
+  password            String?   @map("password_hash")
+  googleId            String?   @unique @map("google_id")
+  provider            String?   @default("email")
+  role                Role      @default(CUSTOMER)
+  lastLogin           DateTime? @map("last_login")
+  isActive            Boolean   @default(true) @map("is_active")
+  passwordResetToken  String?   @map("password_reset_token")
+  passwordResetExpiry DateTime? @map("password_reset_expiry")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
 
   addresses Address[]
   orders    Order[]
+  payments  Payment[]
 
   @@map("users")
 }
@@ -62,23 +65,23 @@ model User {
 // ─────────────────────────────────────────────
 
 model Address {
-  id            String   @id @default(uuid())
-  userId        String   @map("user_id")
-  label         String   // Ej: "Casa", "Trabajo"
-  direction     String   // Dirección legible (calle, número)
-  
+  id        String @id @default(uuid())
+  userId    String @map("user_id")
+  label     String // Ej: "Casa", "Trabajo"
+  direction String // Dirección legible (calle, número)
+
   // --- CAMPOS PARA MAPAS ---
-  latitude      Decimal  @db.Decimal(10, 8)
-  longitude     Decimal  @db.Decimal(11, 8)
-  placeId       String?  @map("place_id") // ID único de Google Maps (opcional)
+  latitude  Decimal @db.Decimal(10, 8)
+  longitude Decimal @db.Decimal(11, 8)
+  placeId   String? @map("place_id") // ID único de Google Maps (opcional)
   // -------------------------
 
-  departament   String   // Número de casa o departamento
-  reference     String?  // Ej: "Frente al parque, portón gris"
-  contact       String?  // Con quién nos comunicaremos
-  
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  orders        Order[]
+  departament String // Número de casa o departamento
+  reference   String? // Ej: "Frente al parque, portón gris"
+  contact     String? // Con quién nos comunicaremos
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders Order[]
 
   @@map("addresses")
 }
@@ -88,12 +91,12 @@ model Address {
 // ─────────────────────────────────────────────
 
 model Category {
-  id        String    @id @default(uuid())
+  id        String   @id @default(uuid())
   name      String
-  slug      String    @unique
-  imageUrl  String?   @map("image_url")
-  isActive  Boolean   @default(true) @map("is_active")
-  createdAt DateTime  @default(now()) @map("created_at")
+  slug      String   @unique
+  imageUrl  String?  @map("image_url")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
 
   products Product[]
 
@@ -112,9 +115,9 @@ model Product {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  category     Category       @relation(fields: [categoryId], references: [id])
+  category     Category      @relation(fields: [categoryId], references: [id])
   optionGroups OptionGroup[]
-  orderItems   OrderItem[] 
+  orderItems   OrderItem[]
 
   @@map("products")
 }
@@ -122,33 +125,32 @@ model Product {
 model OptionGroup {
   id            String  @id @default(uuid())
   productId     String  @map("product_id")
-  name          String  // "Elige tu presa"
+  name          String // "Elige tu presa"
   isRequired    Boolean @default(true) @map("is_required")
-  minSelections Int     @default(1)    @map("min_selections")
-  maxSelections Int     @default(1)    @map("max_selections")
-  sortOrder     Int     @default(0)    @map("sort_order")
+  minSelections Int     @default(1) @map("min_selections")
+  maxSelections Int     @default(1) @map("max_selections")
+  sortOrder     Int     @default(0) @map("sort_order")
 
   product Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   options Option[]
 
   @@map("option_groups")
 }
+
 model Option {
   id          String  @id @default(uuid())
   groupId     String  @map("group_id")
-  name        String  // "Pierna + Entrepierna", "Pecho + Ala"
+  name        String // "Pierna + Entrepierna", "Pecho + Ala"
   extraPrice  Decimal @default(0) @map("extra_price") @db.Decimal(10, 2)
   isAvailable Boolean @default(true) @map("is_available")
-  sortOrder   Int     @default(0)    @map("sort_order")
+  sortOrder   Int     @default(0) @map("sort_order")
   imageUrl    String? @map("image_url")
 
-  group               OptionGroup      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  group               OptionGroup       @relation(fields: [groupId], references: [id], onDelete: Cascade)
   orderItemSelections OrderItemOption[]
 
   @@map("options")
 }
-
-
 
 // ─────────────────────────────────────────────
 //  ORDER
@@ -162,15 +164,16 @@ model Order {
   orderType   OrderType   @map("order_type")
   status      OrderStatus @default(PENDING)
   subtotal    Decimal     @db.Decimal(10, 2)
-  deliveryFee Decimal     @default(0) @db.Decimal(10, 2) @map("delivery_fee")
+  deliveryFee Decimal     @default(0) @map("delivery_fee") @db.Decimal(10, 2)
   total       Decimal     @db.Decimal(10, 2)
-  notes       String?     // instrucciones especiales
+  notes       String? // instrucciones especiales
   createdAt   DateTime    @default(now()) @map("created_at")
   updatedAt   DateTime    @updatedAt @map("updated_at")
 
-  user          User                 @relation(fields: [userId], references: [id])
-  address       Address?             @relation(fields: [addressId], references: [id])
-  items         OrderItem[]
+  user    User        @relation(fields: [userId], references: [id])
+  address Address?    @relation(fields: [addressId], references: [id])
+  items   OrderItem[]
+  payment Payment?
 
   @@map("orders")
 }
@@ -178,20 +181,20 @@ model Order {
 model OrderItem {
   id          String  @id @default(uuid())
   orderId     String  @map("order_id")
-  productId   String  @map("product_id")   // ← reemplaza variantId
+  productId   String  @map("product_id")
   productName String  @map("product_name") // snapshot del nombre
-  // variantName ya no existe
   quantity    Int
-  unitPrice   Decimal @db.Decimal(10, 2) @map("unit_price")
+  unitPrice   Decimal @map("unit_price") @db.Decimal(10, 2)
   subtotal    Decimal @db.Decimal(10, 2)
   notes       String? // instrucciones especiales del item
 
-  order           Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product         Product         @relation(fields: [productId], references: [id])
+  order           Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product         Product           @relation(fields: [productId], references: [id])
   selectedOptions OrderItemOption[]
 
   @@map("order_items")
 }
+
 model OrderItemOption {
   id          String  @id @default(uuid())
   orderItemId String  @map("order_item_id")
@@ -203,4 +206,33 @@ model OrderItemOption {
   option    Option    @relation(fields: [optionId], references: [id])
 
   @@map("order_item_options")
+}
+
+// ─────────────────────────────────────────────
+//  PAYMENTS
+// ─────────────────────────────────────────────
+
+model Payment {
+  id                    String    @id @default(uuid())
+  orderId               String    @unique @map("order_id")
+  userId                String    @map("user_id")
+  provider              String // "niubiz"
+  status                String // "pending" | "paid" | "failed"
+  amount                Decimal   @db.Decimal(10, 2)
+  currency              String    @default("PEN")
+  gatewayPurchaseNumber String?   @map("gateway_purchase_number")
+  gatewaySessionKey     String?   @map("gateway_session_key")
+  gatewayTransactionId  String?   @map("gateway_transaction_id")
+  gatewayAuthCode       String?   @map("gateway_auth_code")
+  gatewayResponseCode   String?   @map("gateway_response_code")
+  gatewayResponseJson   Json?     @map("gateway_response_json")
+  paidAt                DateTime? @map("paid_at")
+  failedAt              DateTime? @map("failed_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@map("payments")
 }
