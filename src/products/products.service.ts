@@ -29,6 +29,7 @@ function mapCategory(c: any) {
     slug: c.slug,
     imageUrl: c.imageUrl ?? null,
     isActive: c.isActive,
+    sortOrder: c.sortOrder ?? 0,
     productCount: c._count?.products ?? undefined,
   };
 }
@@ -95,7 +96,7 @@ export class ProductsService {
   async findAllCategories() {
     const categories = await this.prisma.category.findMany({
       where: { isActive: true },
-      orderBy: { name: 'asc' },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     });
     return categories.map(mapCategory);
   }
@@ -104,7 +105,7 @@ export class ProductsService {
 
   async findAllCategoriesAdmin() {
     const categories = await this.prisma.category.findMany({
-      orderBy: { name: 'asc' },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       include: { _count: { select: { products: true } } },
     });
     return categories.map(mapCategory);
@@ -118,6 +119,7 @@ export class ProductsService {
           name: dto.name.trim(),
           slug,
           imageUrl: dto.imageUrl?.trim() || null,
+          sortOrder: dto.sortOrder ?? 0,
         },
       });
       return mapCategory(created);
@@ -143,6 +145,7 @@ export class ProductsService {
           ...(dto.imageUrl !== undefined && {
             imageUrl: dto.imageUrl?.trim() || null,
           }),
+          ...(dto.sortOrder !== undefined && { sortOrder: dto.sortOrder }),
         },
       });
       return mapCategory(updated);
