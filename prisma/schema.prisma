@@ -22,13 +22,14 @@ enum OrderType {
 
 enum OrderStatus {
   PENDING_PAYMENT // Orden creada, esperando confirmación de pago
-  PENDING // Recibido, esperando confirmación (pago confirmado)
-  PREPARING // En cocina preparando
-  ON_THE_WAY // En camino (solo DELIVERY)
-  PICKED_UP // listo para recoger en local (solo PICKUP)
-  PAYMENT_FAILED // Pago rechazado o fallido
-  CANCELLED // Cancelado
-  COMPLETED // Pedido completado con exito
+  PENDING         // Recibido, esperando aceptación
+  ACCEPTED        // Aceptado por cocina / administrador
+  PREPARING       // En cocina preparando
+  ON_THE_WAY      // En camino (solo DELIVERY)
+  PICKED_UP       // Listo para recoger en local (solo PICKUP)
+  PAYMENT_FAILED  // Pago rechazado o fallido
+  CANCELLED       // Cancelado
+  COMPLETED       // Pedido completado con éxito
 }
 
 // ─────────────────────────────────────────────
@@ -159,7 +160,8 @@ model Option {
 
 model Order {
   id          String      @id @default(uuid())
-  orderNumber String      @unique @map("order_number") // Ej: "KFC-00842"
+  orderNumber String      @map("order_number") // Ej: "OKT-0001" (secuencial diario)
+  orderDate   DateTime    @default(now()) @db.Date @map("order_date") // fecha Bolivia, reinicia contador
   userId      String      @map("user_id")
   addressId   String?     @map("address_id") // null si es PICKUP
   orderType   OrderType   @map("order_type")
@@ -176,6 +178,7 @@ model Order {
   items   OrderItem[]
   payment Payment?
 
+  @@unique([orderDate, orderNumber])
   @@map("orders")
 }
 

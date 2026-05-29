@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { OrderStatus, OrderType } from '@prisma/client';
@@ -34,11 +35,15 @@ function calcDeliveryFee(km: number): number {
   return 20;
 }
 
-function generateOrderNumber(): string {
-  const n = Math.floor(Math.random() * 99999)
-    .toString()
-    .padStart(5, '0');
-  return `OKT-${n}`;
+// Bolivia es UTC-4. Calcula el rango UTC del día actual según zona horaria boliviana.
+function getBoliviaDay(): { start: Date; end: Date } {
+  const BOL_OFFSET_MS = 4 * 60 * 60 * 1000; // UTC-4
+  const nowBOL = Date.now() - BOL_OFFSET_MS;
+  const midnightBOL = new Date(nowBOL);
+  midnightBOL.setUTCHours(0, 0, 0, 0);
+  const start = new Date(midnightBOL.getTime() + BOL_OFFSET_MS);
+  const end   = new Date(start.getTime() + 24 * 3600 * 1000);
+  return { start, end };
 }
 
 function mapOrder(o: any) {
@@ -138,40 +143,77 @@ export class OrdersService {
     );
     const total = subtotal + deliveryFee;
 
-    let orderNumber: string;
-    let attempts = 0;
-    do {
-      orderNumber = generateOrderNumber();
-      attempts++;
-      if (attempts > 20) throw new Error('No se pudo generar un número de orden único.');
-    } while (await this.prisma.order.findUnique({ where: { orderNumber } }));
+    // Genera número secuencial diario dentro de una transacción serializable
+    // para evitar colisiones en creaciones concurrentes.
+    let order: Awaited<ReturnType<typeof this.prisma.order.create>>;
+    let txAttempts = 0;
+    while (true) {
+      try {
+        order = await this.prisma.$transaction(
+          async (tx) => {
+            const { start, end } = getBoliviaDay();
 
-    const order = await this.prisma.order.create({
-      data: {
-        orderNumber,
-        userId,
-        addressId: dto.addressId ?? null,
-        orderType: dto.orderType,
-        status: initialStatus,
-        subtotal,
-        deliveryFee,
-        total,
-        notes: dto.notes ?? null,
-        items: {
-          create: resolvedItems.map(({ product, quantity }) => ({
-            productId: product.id,
-            productName: product.name,
-            quantity,
-            unitPrice: Number(product.price),
-            subtotal: Number(product.price) * quantity,
-          })),
-        },
-      },
-      include: {
-        items: { include: { selectedOptions: true } },
-        address: true,
-      },
-    });
+            // Lee todos los números de hoy con formato OKT-XXXX (4 dígitos)
+            const todayOrders = await tx.order.findMany({
+              where: { createdAt: { gte: start, lt: end } },
+              select: { orderNumber: true },
+            });
+
+            let maxSeq = 0;
+            for (const o of todayOrders) {
+              const m = o.orderNumber.match(/^OKT-(\d{4})$/);
+              if (m) {
+                const n = parseInt(m[1], 10);
+                if (n > maxSeq) maxSeq = n;
+              }
+            }
+
+            const seq = maxSeq + 1;
+            if (seq > 9999) {
+              throw new BadRequestException('Se alcanzó el límite diario de pedidos (9999).');
+            }
+
+            const orderNumber = `OKT-${seq.toString().padStart(4, '0')}`;
+
+            return tx.order.create({
+              data: {
+                orderNumber,
+                userId,
+                addressId: dto.addressId ?? null,
+                orderType: dto.orderType,
+                status: initialStatus,
+                subtotal,
+                deliveryFee,
+                total,
+                notes: dto.notes ?? null,
+                items: {
+                  create: resolvedItems.map(({ product, quantity }) => ({
+                    productId: product.id,
+                    productName: product.name,
+                    quantity,
+                    unitPrice: Number(product.price),
+                    subtotal: Number(product.price) * quantity,
+                  })),
+                },
+              },
+              include: {
+                items: { include: { selectedOptions: true } },
+                address: true,
+              },
+            });
+          },
+          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+        );
+        break;
+      } catch (e: any) {
+        // P2034 = serialization failure — reintentar hasta 3 veces
+        if (e?.code === 'P2034' && txAttempts < 3) {
+          txAttempts++;
+          continue;
+        }
+        throw e;
+      }
+    }
 
     return mapOrder(order);
   }
