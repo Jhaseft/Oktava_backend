@@ -12,15 +12,24 @@ export class WhatsappService {
   private readonly baseUrl: string;
   private readonly instance: string;
   private readonly apiKey: string;
+  private readonly devMode: boolean;
 
   constructor(private configService: ConfigService) {
     this.baseUrl = this.configService.get<string>('EVOLUTION_API_URL') ?? '';
     this.instance = this.configService.get<string>('EVOLUTION_API_INSTANCE') ?? '';
     this.apiKey = this.configService.get<string>('EVOLUTION_API_KEY') ?? '';
+    this.devMode = this.configService.get<string>('WHATSAPP_DEV_MODE') === 'true';
 
-    if (!this.baseUrl || !this.instance || !this.apiKey) {
+    const configured = !!(this.baseUrl && this.instance && this.apiKey);
+
+    if (this.devMode) {
       this.logger.warn(
-        'Evolution API no configurada (EVOLUTION_API_URL / EVOLUTION_API_INSTANCE / EVOLUTION_API_KEY vacíos)',
+        'WHATSAPP_DEV_MODE=true — los mensajes NO se enviarán. Solo se imprimirán en consola.',
+      );
+    } else if (!configured) {
+      this.logger.error(
+        'Evolution API NO configurada. Define EVOLUTION_API_URL, EVOLUTION_API_INSTANCE y EVOLUTION_API_KEY en .env, ' +
+        'o activa WHATSAPP_DEV_MODE=true para desarrollo local.',
       );
     } else {
       this.logger.log(`Evolution API lista → ${this.baseUrl} | instancia: ${this.instance}`);
@@ -28,20 +37,24 @@ export class WhatsappService {
   }
 
   async sendText(phoneNumber: string, text: string): Promise<void> {
-    if (!this.baseUrl || !this.instance || !this.apiKey) {
-      if (process.env.NODE_ENV !== 'production') {
-        this.logger.warn(`[DEV] WhatsApp OTP → ${phoneNumber}\n${text}`);
+    const configured = !!(this.baseUrl && this.instance && this.apiKey);
+
+    if (!configured) {
+      if (this.devMode) {
+        this.logger.warn(
+          `[DEV MODE] WhatsApp simulado → ${phoneNumber}\n${text}`,
+        );
         return;
       }
       throw new ServiceUnavailableException(
-        'El servicio de WhatsApp no está configurado en el servidor.',
+        'El servicio de WhatsApp no está configurado. Contacte al administrador.',
       );
     }
 
     const url = `${this.baseUrl}/message/sendText/${this.instance}`;
     const number = phoneNumber.replace(/^\+/, '');
 
-    this.logger.log(`→ POST ${url}  número: ${number}`);
+    this.logger.log(`Enviando WhatsApp a ${number} vía ${this.baseUrl}`);
 
     let response: Response;
     try {
@@ -59,10 +72,11 @@ export class WhatsappService {
     }
 
     const responseBody = await response.text();
-    this.logger.log(`← ${response.status} ${response.statusText}: ${responseBody}`);
 
     if (!response.ok) {
-      this.logger.error(`Evolution API rechazó la solicitud [${response.status}]: ${responseBody}`);
+      this.logger.error(
+        `Evolution API rechazó la solicitud [${response.status}]: ${responseBody}`,
+      );
 
       let parsed: { response?: { message?: string } } = {};
       try { parsed = JSON.parse(responseBody); } catch { /* not JSON */ }
@@ -76,6 +90,6 @@ export class WhatsappService {
       throw new InternalServerErrorException('Error al enviar mensaje de WhatsApp');
     }
 
-    this.logger.log(`WhatsApp enviado correctamente a ${number}`);
+    this.logger.log(`WhatsApp OTP enviado a ${number}`);
   }
 }
