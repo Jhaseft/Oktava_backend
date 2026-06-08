@@ -184,30 +184,64 @@ export class AuthService {
   }
 
   async googleMobileLogin(idToken: string) {
-    const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
-    const client = new OAuth2Client(clientId);
+    const mobileWebClientId = this.configService.get<string>('GOOGLE_MOBILE_WEB_CLIENT_ID');
+    const mobileIosClientId = this.configService.get<string>('GOOGLE_MOBILE_IOS_CLIENT_ID');
+    const allowedAudiences = [mobileWebClientId, mobileIosClientId].filter(
+      (v): v is string => !!v,
+    );
+
+    console.log('[googleMobileLogin] audiences permitidos:', allowedAudiences);
+    console.log('[googleMobileLogin] idToken recibido (primeros 30):', idToken?.slice(0, 30));
+
+    try {
+      const [, payloadB64] = idToken.split('.');
+      const decoded = JSON.parse(Buffer.from(payloadB64, 'base64').toString('utf8'));
+      console.log('[googleMobileLogin] token aud:', decoded.aud);
+      console.log('[googleMobileLogin] token iss:', decoded.iss);
+      console.log('[googleMobileLogin] token email:', decoded.email);
+      console.log('[googleMobileLogin] token exp:', new Date(decoded.exp * 1000).toISOString());
+      console.log('[googleMobileLogin] now:', new Date().toISOString());
+    } catch (e) {
+      console.log('[googleMobileLogin] No se pudo decodificar el JWT manualmente:', e);
+    }
+
+    if (allowedAudiences.length === 0) {
+      console.error('[googleMobileLogin] No hay GOOGLE_MOBILE_WEB_CLIENT_ID ni GOOGLE_MOBILE_IOS_CLIENT_ID configurados');
+      throw new UnauthorizedException('Configuración de Google para móvil ausente.');
+    }
+
+    const client = new OAuth2Client();
 
     let payload: TokenPayload | undefined;
     try {
-      const ticket = await client.verifyIdToken({ idToken, audience: clientId });
+      const ticket = await client.verifyIdToken({ idToken, audience: allowedAudiences });
       payload = ticket.getPayload();
-    } catch {
+      console.log('[googleMobileLogin] verifyIdToken OK. payload.email:', payload?.email);
+    } catch (err) {
+      console.error('[googleMobileLogin] verifyIdToken FALLÓ:', err);
       throw new UnauthorizedException('Token de Google inválido o expirado.');
     }
 
     if (!payload?.email) {
+      console.error('[googleMobileLogin] payload sin email:', payload);
       throw new UnauthorizedException('No se pudo obtener el email desde Google.');
     }
 
-    const user = await this.usersService.findOrCreateGoogleUser({
-      email: payload.email,
-      firstName: payload.given_name ?? '',
-      lastName: payload.family_name ?? '',
-      googleId: payload.sub,
-    });
+    try {
+      const user = await this.usersService.findOrCreateGoogleUser({
+        email: payload.email,
+        firstName: payload.given_name ?? '',
+        lastName: payload.family_name ?? '',
+        googleId: payload.sub,
+      });
+      console.log('[googleMobileLogin] findOrCreateGoogleUser OK. userId:', user.id);
 
-    const { password: _, ...userWithoutPassword } = user;
-    return this.generateTokenResponse(userWithoutPassword);
+      const { password: _, ...userWithoutPassword } = user;
+      return this.generateTokenResponse(userWithoutPassword);
+    } catch (err) {
+      console.error('[googleMobileLogin] findOrCreateGoogleUser / generateTokenResponse FALLÓ:', err);
+      throw err;
+    }
   }
 
   // ─── Forgot / Reset Password ───────────────────────────────────────────────
