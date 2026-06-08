@@ -55,9 +55,10 @@ export class OrdersController {
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
   updateStatus(
+    @CurrentUser() user: JwtUser,
     @Param('id') id: string,
     @Body('status') status: OrderStatus,
   ) {
-    return this.ordersService.updateStatus(id, status);
+    return this.ordersService.updateStatus(id, status, user.userId);
   }
 }

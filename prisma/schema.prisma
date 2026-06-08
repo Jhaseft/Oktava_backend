@@ -54,9 +54,10 @@ model User {
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
-  addresses Address[]
-  orders    Order[]
-  payments  Payment[]
+  addresses       Address[]
+  orders          Order[]
+  payments        Payment[]
+  attendedOrders  Order[]   @relation("OrderAttendedBy")
 
   @@map("users")
 }
@@ -159,24 +160,27 @@ model Option {
 // ─────────────────────────────────────────────
 
 model Order {
-  id          String      @id @default(uuid())
-  orderNumber String      @map("order_number") // Ej: "OKT-0001" (secuencial diario)
-  orderDate   DateTime    @default(now()) @db.Date @map("order_date") // fecha Bolivia, reinicia contador
-  userId      String      @map("user_id")
-  addressId   String?     @map("address_id") // null si es PICKUP
-  orderType   OrderType   @map("order_type")
-  status      OrderStatus @default(PENDING)
-  subtotal    Decimal     @db.Decimal(10, 2)
-  deliveryFee Decimal     @default(0) @map("delivery_fee") @db.Decimal(10, 2)
-  total       Decimal     @db.Decimal(10, 2)
-  notes       String? // instrucciones especiales
-  createdAt   DateTime    @default(now()) @map("created_at")
-  updatedAt   DateTime    @updatedAt @map("updated_at")
+  id            String      @id @default(uuid())
+  orderNumber   String      @map("order_number") // Ej: "OKT-0001" (secuencial diario)
+  orderDate     DateTime    @default(now()) @db.Date @map("order_date") // fecha Bolivia, reinicia contador
+  userId        String      @map("user_id")
+  addressId     String?     @map("address_id") // null si es PICKUP
+  orderType     OrderType   @map("order_type")
+  status        OrderStatus @default(PENDING)
+  subtotal      Decimal     @db.Decimal(10, 2)
+  deliveryFee   Decimal     @default(0) @map("delivery_fee") @db.Decimal(10, 2)
+  total         Decimal     @db.Decimal(10, 2)
+  notes         String? // instrucciones especiales
+  attendedById  String?     @map("attended_by_id") // admin que tomó el pedido
+  attendedAt    DateTime?   @map("attended_at")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
 
-  user    User        @relation(fields: [userId], references: [id])
-  address Address?    @relation(fields: [addressId], references: [id])
-  items   OrderItem[]
-  payment Payment?
+  user       User        @relation(fields: [userId], references: [id])
+  address    Address?    @relation(fields: [addressId], references: [id])
+  items      OrderItem[]
+  payment    Payment?
+  attendedBy User?       @relation("OrderAttendedBy", fields: [attendedById], references: [id])
 
   @@unique([orderDate, orderNumber])
   @@map("orders")

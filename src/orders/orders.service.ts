@@ -70,6 +70,13 @@ function mapOrder(o: any) {
           longitude: Number(o.address.longitude),
         }
       : null,
+    attendedBy: o.attendedBy
+      ? {
+          id: o.attendedBy.id,
+          firstName: o.attendedBy.firstName,
+          lastName: o.attendedBy.lastName,
+        }
+      : null,
   };
 }
 
@@ -187,13 +194,25 @@ export class OrdersService {
                 total,
                 notes: dto.notes ?? null,
                 items: {
-                  create: resolvedItems.map(({ product, quantity }) => ({
-                    productId: product.id,
-                    productName: product.name,
-                    quantity,
-                    unitPrice: Number(product.price),
-                    subtotal: Number(product.price) * quantity,
-                  })),
+                  create: resolvedItems.map(({ product, quantity, selectedOptions }) => {
+                    const extrasTotal = selectedOptions.reduce((s, o) => s + o.extraPrice, 0);
+                    return {
+                      productId: product.id,
+                      productName: product.name,
+                      quantity,
+                      unitPrice: Number(product.price),
+                      subtotal: (Number(product.price) + extrasTotal) * quantity,
+                      selectedOptions: selectedOptions.length > 0
+                        ? {
+                            create: selectedOptions.map((opt) => ({
+                              optionId: opt.optionId,
+                              optionName: opt.optionName,
+                              extraPrice: opt.extraPrice,
+                            })),
+                          }
+                        : undefined,
+                    };
+                  }),
                 },
               },
               include: {
@@ -237,22 +256,33 @@ export class OrdersService {
         user: {
           select: { id: true, firstName: true, lastName: true, email: true, phone: true },
         },
+        attendedBy: {
+          select: { id: true, firstName: true, lastName: true },
+        },
       },
     });
     return orders.map(mapOrder);
   }
 
-  async updateStatus(id: string, status: OrderStatus) {
+  async updateStatus(id: string, status: OrderStatus, adminId: string) {
     const order = await this.prisma.order.findUnique({ where: { id } });
     if (!order) throw new NotFoundException('Pedido no encontrado.');
+
+    const attendedData = order.attendedById
+      ? {}
+      : { attendedById: adminId, attendedAt: new Date() };
+
     const updated = await this.prisma.order.update({
       where: { id },
-      data: { status },
+      data: { status, ...attendedData },
       include: {
         items: { include: { selectedOptions: true } },
         address: true,
         user: {
           select: { id: true, firstName: true, lastName: true, email: true, phone: true },
+        },
+        attendedBy: {
+          select: { id: true, firstName: true, lastName: true },
         },
       },
     });
