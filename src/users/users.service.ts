@@ -1,7 +1,9 @@
-import { Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { Role, type User } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma.service';
 import { AdminUpdateUserDto } from './dto/admin-update-user.dto';
+import { CreateAdminDto } from './dto/create-admin.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { QueryUsersDto } from './dto/query-users.dto';
 
@@ -130,6 +132,51 @@ export class UsersService {
   }
 
   // ─── Admin-facing methods ──────────────────────────────────────────────────
+
+  async findAllAdmins() {
+    const users = await this.prisma.user.findMany({
+      where: { role: Role.ADMIN },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        isActive: true,
+        createdAt: true,
+      },
+    });
+    return users;
+  }
+
+  async createAdmin(dto: CreateAdminDto) {
+    const existing = await this.findOneByEmail(dto.email);
+    if (existing) throw new ConflictException('Ya existe un usuario con ese correo.');
+
+    const hashedPassword = await bcrypt.hash(dto.password, 10);
+
+    const user = await this.prisma.user.create({
+      data: {
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        email: dto.email.toLowerCase().trim(),
+        password: hashedPassword,
+        role: Role.ADMIN,
+        phoneVerified: true,
+      },
+    });
+
+    return {
+      id: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      role: user.role,
+      isActive: user.isActive,
+      createdAt: user.createdAt,
+    };
+  }
+
 
   async findAllClients(query: QueryUsersDto) {
     const search = query.search?.trim();

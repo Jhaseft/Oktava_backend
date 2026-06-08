@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   Patch,
+  Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -13,6 +14,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { AdminUpdateUserDto } from './dto/admin-update-user.dto';
+import { CreateAdminDto } from './dto/create-admin.dto';
 import { QueryUsersDto } from './dto/query-users.dto';
 import { UsersService } from './users.service';
 
@@ -21,6 +23,24 @@ import { UsersService } from './users.service';
 @Roles(Role.ADMIN)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
+
+  /**
+   * GET /users/admins
+   * Returns all ADMIN-role users.
+   */
+  @Get('admins')
+  findAdmins() {
+    return this.usersService.findAllAdmins();
+  }
+
+  /**
+   * POST /users/admins
+   * Creates a new ADMIN user.
+   */
+  @Post('admins')
+  createAdmin(@Body() dto: CreateAdminDto) {
+    return this.usersService.createAdmin(dto);
+  }
 
   /**
    * GET /users?search=maria
