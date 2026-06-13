@@ -9,6 +9,42 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { OrderStatus, OrderType } from '@prisma/client';
+import { NotificationsService } from '../notifications/notifications.service';
+
+/**
+ * Mensaje de notificación por estado de pedido (solo los relevantes para el
+ * cliente). Si un estado no está aquí, no se envía push.
+ */
+const STATUS_PUSH: Partial<Record<OrderStatus, { title: string; body: string }>> = {
+  [OrderStatus.ACCEPTED]: {
+    title: 'Pedido aceptado 🎉',
+    body: 'Tu pedido fue aceptado y pronto empezaremos a prepararlo.',
+  },
+  [OrderStatus.PREPARING]: {
+    title: 'Preparando tu pedido 👨‍🍳',
+    body: 'Estamos cocinando tu pedido.',
+  },
+  [OrderStatus.ON_THE_WAY]: {
+    title: 'Tu pedido va en camino 🛵',
+    body: 'El repartidor ya salió con tu pedido.',
+  },
+  [OrderStatus.PICKED_UP]: {
+    title: 'Pedido listo para recoger 🛍️',
+    body: 'Tu pedido está listo para que lo recojas en el local.',
+  },
+  [OrderStatus.COMPLETED]: {
+    title: 'Pedido completado ✅',
+    body: '¡Gracias por tu compra! Esperamos que lo disfrutes.',
+  },
+  [OrderStatus.CANCELLED]: {
+    title: 'Pedido cancelado',
+    body: 'Tu pedido fue cancelado. Si tienes dudas, contáctanos.',
+  },
+  [OrderStatus.PAYMENT_FAILED]: {
+    title: 'Problema con el pago',
+    body: 'No pudimos procesar el pago de tu pedido.',
+  },
+};
 
 const STORE_LAT = -17.392267;
 const STORE_LNG = -66.069302;
@@ -82,7 +118,10 @@ function mapOrder(o: any) {
 
 @Injectable()
 export class OrdersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   async create(
     userId: string,
@@ -286,6 +325,20 @@ export class OrdersService {
         },
       },
     });
+
+    // Notifica al cliente solo si el estado realmente cambió y es relevante.
+    // Fire-and-forget: un fallo de push no debe romper el cambio de estado.
+    if (order.status !== status) {
+      const push = STATUS_PUSH[status];
+      if (push) {
+        void this.notifications.sendToUser(updated.userId, {
+          title: push.title,
+          body: `${push.body} (Pedido ${updated.orderNumber})`,
+          data: { type: 'order', orderId: updated.id, status },
+        });
+      }
+    }
+
     return mapOrder(updated);
   }
 
