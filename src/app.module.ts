@@ -8,6 +8,7 @@ import { AddressesModule } from './addresses/addresses.module';
 import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
 import { AppConfigModule } from './app-config/app-config.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { AppConfigModule } from './app-config/app-config.module';
     OrdersModule,
     PaymentsModule,
     AppConfigModule,
+    NotificationsModule,
   ],
   controllers: [],
   providers: [],
