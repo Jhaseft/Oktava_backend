@@ -83,6 +83,34 @@ function getBoliviaDay(): { start: Date; end: Date } {
   return { start, end };
 }
 
+/**
+ * Devuelve la dirección de entrega del pedido. Prefiere el snapshot congelado
+ * en la propia orden; si no existe (pedidos anteriores a esta función) cae a la
+ * relación viva con la tabla addresses.
+ */
+function buildOrderAddress(o: any) {
+  if (o.deliveryDirection != null) {
+    return {
+      id: o.addressId,
+      label: o.deliveryLabel,
+      direction: o.deliveryDirection,
+      departament: o.deliveryDepartament,
+      reference: o.deliveryReference,
+      contact: o.deliveryContact,
+      latitude: o.deliveryLatitude != null ? Number(o.deliveryLatitude) : null,
+      longitude: o.deliveryLongitude != null ? Number(o.deliveryLongitude) : null,
+    };
+  }
+  if (o.address) {
+    return {
+      ...o.address,
+      latitude: Number(o.address.latitude),
+      longitude: Number(o.address.longitude),
+    };
+  }
+  return null;
+}
+
 function mapOrder(o: any) {
   return {
     ...o,
@@ -100,13 +128,7 @@ function mapOrder(o: any) {
         extraPrice: Number(opt.extraPrice),
       })),
     })),
-    address: o.address
-      ? {
-          ...o.address,
-          latitude: Number(o.address.latitude),
-          longitude: Number(o.address.longitude),
-        }
-      : null,
+    address: buildOrderAddress(o),
     attendedBy: o.attendedBy
       ? {
           id: o.attendedBy.id,
@@ -147,6 +169,16 @@ export class OrdersService {
     }
 
     let deliveryFee = 0;
+    // Snapshot de la dirección, congelado al crear el pedido (solo DELIVERY).
+    let deliverySnapshot: {
+      deliveryLabel: string;
+      deliveryDirection: string;
+      deliveryDepartament: string;
+      deliveryReference: string | null;
+      deliveryContact: string | null;
+      deliveryLatitude: Prisma.Decimal;
+      deliveryLongitude: Prisma.Decimal;
+    } | null = null;
 
     if (dto.orderType === OrderType.DELIVERY) {
       if (!dto.addressId) {
@@ -170,18 +202,53 @@ export class OrdersService {
         );
       }
       deliveryFee = calcDeliveryFee(km);
+      deliverySnapshot = {
+        deliveryLabel: address.label,
+        deliveryDirection: address.direction,
+        deliveryDepartament: address.departament,
+        deliveryReference: address.reference,
+        deliveryContact: address.contact,
+        deliveryLatitude: address.latitude,
+        deliveryLongitude: address.longitude,
+      };
     }
 
-    // Resolve each product and its price
+    // Resuelve cada producto y valida sus opciones contra la BD. NUNCA se confía
+    // en el precio ni el nombre que manda el cliente: `extraPrice` y `optionName`
+    // se toman siempre de la tabla Option, y se verifica que cada opción
+    // pertenezca al producto y esté disponible.
     const resolvedItems = await Promise.all(
       dto.items.map(async ({ productId, quantity, selectedOptions }) => {
         const product = await this.prisma.product.findFirst({
           where: { id: productId, isAvailable: true },
+          include: { optionGroups: { include: { options: true } } },
         });
         if (!product) {
           throw new NotFoundException(`Producto ${productId} no encontrado o no disponible.`);
         }
-        return { product, quantity, selectedOptions: selectedOptions ?? [] };
+
+        // Opciones válidas y disponibles de este producto, indexadas por id.
+        const validOptions = new Map<string, { name: string; extraPrice: number }>();
+        for (const group of product.optionGroups) {
+          for (const opt of group.options) {
+            if (opt.isAvailable) {
+              validOptions.set(opt.id, { name: opt.name, extraPrice: Number(opt.extraPrice) });
+            }
+          }
+        }
+
+        const resolvedOptions = (selectedOptions ?? []).map(({ optionId }) => {
+          const dbOption = validOptions.get(optionId);
+          if (!dbOption) {
+            throw new BadRequestException(
+              `Una de las opciones seleccionadas no es válida o no está disponible para "${product.name}".`,
+            );
+          }
+          // Precio y nombre tomados de la BD, no del cliente.
+          return { optionId, optionName: dbOption.name, extraPrice: dbOption.extraPrice };
+        });
+
+        return { product, quantity, selectedOptions: resolvedOptions };
       }),
     );
 
@@ -237,6 +304,7 @@ export class OrdersService {
                 deliveryFee,
                 total,
                 notes: dto.notes ?? null,
+                ...(deliverySnapshot ?? {}),
                 items: {
                   create: resolvedItems.map(({ product, quantity, selectedOptions }) => {
                     const extrasTotal = selectedOptions.reduce((s, o) => s + o.extraPrice, 0);

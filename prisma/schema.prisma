@@ -165,13 +165,26 @@ model Order {
   orderNumber   String      @map("order_number") // Ej: "OKT-0001" (secuencial diario)
   orderDate     DateTime    @default(now()) @db.Date @map("order_date") // fecha Bolivia, reinicia contador
   userId        String      @map("user_id")
-  addressId     String?     @map("address_id") // null si es PICKUP
+  addressId     String?     @map("address_id") // referencia opcional a la dirección guardada (null si es PICKUP)
   orderType     OrderType   @map("order_type")
   status        OrderStatus @default(PENDING)
   subtotal      Decimal     @db.Decimal(10, 2)
   deliveryFee   Decimal     @default(0) @map("delivery_fee") @db.Decimal(10, 2)
   total         Decimal     @db.Decimal(10, 2)
   notes         String? // instrucciones especiales
+
+  // --- SNAPSHOT de la dirección de entrega (congelada al crear el pedido) ---
+  // Independiente de la tabla addresses: editar/eliminar la dirección nunca
+  // altera pedidos ya creados. Null en pedidos PICKUP o anteriores a esta función.
+  deliveryLabel       String?  @map("delivery_label")
+  deliveryDirection   String?  @map("delivery_direction")
+  deliveryDepartament String?  @map("delivery_departament")
+  deliveryReference   String?  @map("delivery_reference")
+  deliveryContact     String?  @map("delivery_contact")
+  deliveryLatitude    Decimal? @map("delivery_latitude") @db.Decimal(10, 8)
+  deliveryLongitude   Decimal? @map("delivery_longitude") @db.Decimal(11, 8)
+  // --------------------------------------------------------------------------
+
   attendedById  String?     @map("attended_by_id") // admin que tomó el pedido
   attendedAt    DateTime?   @map("attended_at")
   createdAt     DateTime    @default(now()) @map("created_at")
