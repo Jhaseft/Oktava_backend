@@ -245,3 +245,26 @@ model Payment {
 
   @@map("payments")
 }
+
+// ─────────────────────────────────────────────
+//  STORE / HORARIOS
+// ─────────────────────────────────────────────
+
+model BusinessHour {
+  id        String  @id @default(uuid())
+  dayOfWeek Int     @unique // 0=Domingo .. 6=Sábado (convención JS getDay)
+  isClosed  Boolean @default(false) @map("is_closed") // día cerrado todo el día
+  openTime  String  @default("09:00") @map("open_time") // "HH:mm" hora Bolivia
+  closeTime String  @default("22:00") @map("close_time")
+
+  @@map("business_hours")
+}
+
+model StoreSettings {
+  id           Int      @id @default(1) // fila singleton (siempre id=1)
+  ordersPaused Boolean  @default(false) @map("orders_paused")
+  pauseMessage String?  @map("pause_message")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("store_settings")
+}

@@ -10,6 +10,7 @@ import { PrismaService } from '../prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { OrderStatus, OrderType } from '@prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
+import { StoreService } from '../store/store.service';
 
 /**
  * Mensaje de notificación por estado de pedido (solo los relevantes para el
@@ -121,6 +122,7 @@ export class OrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
+    private readonly store: StoreService,
   ) {}
 
   async create(
@@ -128,6 +130,9 @@ export class OrdersService {
     dto: CreateOrderDto,
     initialStatus: OrderStatus = OrderStatus.PENDING,
   ) {
+    // El local debe estar abierto (horario configurado o no estar en pausa manual).
+    await this.store.assertOpen();
+
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('Usuario no encontrado.');
     if (!user.phoneVerified) {
