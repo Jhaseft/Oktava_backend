@@ -203,7 +203,7 @@ model Order {
 model OrderItem {
   id          String  @id @default(uuid())
   orderId     String  @map("order_id")
-  productId   String  @map("product_id")
+  productId   String? @map("product_id") // referencia viva opcional; el snapshot es productName
   productName String  @map("product_name") // snapshot del nombre
   quantity    Int
   unitPrice   Decimal @map("unit_price") @db.Decimal(10, 2)
@@ -211,7 +211,9 @@ model OrderItem {
   notes       String? // instrucciones especiales del item
 
   order           Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product         Product           @relation(fields: [productId], references: [id])
+  // SetNull: si el producto se borra/edita, el pedido conserva su snapshot y solo
+  // se corta el vínculo vivo (no bloquea la eliminación del producto).
+  product         Product?          @relation(fields: [productId], references: [id], onDelete: SetNull)
   selectedOptions OrderItemOption[]
 
   @@map("order_items")
@@ -220,12 +222,14 @@ model OrderItem {
 model OrderItemOption {
   id          String  @id @default(uuid())
   orderItemId String  @map("order_item_id")
-  optionId    String  @map("option_id")
+  optionId    String? @map("option_id") // referencia viva opcional; el snapshot es optionName/extraPrice
   optionName  String  @map("option_name") // snapshot
   extraPrice  Decimal @map("extra_price") @db.Decimal(10, 2) // snapshot
 
   orderItem OrderItem @relation(fields: [orderItemId], references: [id])
-  option    Option    @relation(fields: [optionId], references: [id])
+  // SetNull: el replace-all al editar un producto borra las Options; el pedido
+  // mantiene su snapshot (optionName/extraPrice) y solo se anula optionId.
+  option    Option?   @relation(fields: [optionId], references: [id], onDelete: SetNull)
 
   @@map("order_item_options")
 }
