@@ -34,7 +34,7 @@ const STATUS_PUSH: Partial<Record<OrderStatus, { title: string; body: string }>>
     body: 'Tu pedido está listo para que lo recojas en el local.',
   },
   [OrderStatus.COMPLETED]: {
-    title: 'Pedido completado ✅',
+    title: 'Pedido completado 🎉',
     body: '¡Gracias por tu compra! Esperamos que lo disfrutes.',
   },
   [OrderStatus.CANCELLED]: {
