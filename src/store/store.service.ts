@@ -16,9 +16,9 @@ const DAY_NAMES = [
   'sábado',
 ];
 
-/** Defaults de horario para las 7 filas (Lun-Vie-Sáb 09:00-22:00, domingo abierto también). */
+/** Defaults de horario: todos los días 09:00-02:00 (cierre cruza medianoche). */
 function defaultDay(dayOfWeek: number): BusinessHourDto {
-  return { dayOfWeek, isClosed: false, openTime: '09:00', closeTime: '22:00' };
+  return { dayOfWeek, isClosed: false, openTime: '09:00', closeTime: '02:00' };
 }
 
 function hhmmToMinutes(hhmm: string): number {

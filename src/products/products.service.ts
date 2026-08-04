@@ -240,20 +240,55 @@ export class ProductsService {
   async update(id: string, dto: UpdateProductDto) {
     await this.findOneProduct(id);
 
-    const { optionGroups: _og, ...productFields } = dto;
+    const { optionGroups, ...productFields } = dto;
 
-    const updated = await this.prisma.product.update({
-      where: { id },
-      data: {
-        ...(productFields.name !== undefined && { name: productFields.name }),
-        ...(productFields.description !== undefined && { description: productFields.description }),
-        ...(productFields.includes !== undefined && { includes: productFields.includes }),
-        ...(productFields.imageUrl !== undefined && { imageUrl: productFields.imageUrl }),
-        ...(productFields.categoryId !== undefined && { categoryId: productFields.categoryId }),
-        ...(productFields.price !== undefined && { price: productFields.price }),
-        ...(productFields.isAvailable !== undefined && { isAvailable: productFields.isAvailable }),
-      },
-      include: PRODUCT_INCLUDE,
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await tx.product.update({
+        where: { id },
+        data: {
+          ...(productFields.name !== undefined && { name: productFields.name }),
+          ...(productFields.description !== undefined && { description: productFields.description }),
+          ...(productFields.includes !== undefined && { includes: productFields.includes }),
+          ...(productFields.imageUrl !== undefined && { imageUrl: productFields.imageUrl }),
+          ...(productFields.categoryId !== undefined && { categoryId: productFields.categoryId }),
+          ...(productFields.price !== undefined && { price: productFields.price }),
+          ...(productFields.isAvailable !== undefined && { isAvailable: productFields.isAvailable }),
+        },
+      });
+
+      // Solo tocamos los grupos de opciones si el payload los incluye.
+      // Estrategia replace-all: borramos los existentes (cascada elimina sus Options)
+      // y recreamos desde el payload. Así se agregan/editan/eliminan en un solo paso.
+      if (optionGroups !== undefined) {
+        await tx.optionGroup.deleteMany({ where: { productId: id } });
+
+        for (const [gi, g] of optionGroups.entries()) {
+          await tx.optionGroup.create({
+            data: {
+              productId: id,
+              name: g.name,
+              isRequired: g.isRequired ?? true,
+              minSelections: g.minSelections ?? 1,
+              maxSelections: g.maxSelections ?? 1,
+              sortOrder: g.sortOrder ?? gi,
+              options: {
+                create: (g.options ?? []).map((o, oi) => ({
+                  name: o.name,
+                  extraPrice: o.extraPrice ?? 0,
+                  isAvailable: o.isAvailable ?? true,
+                  sortOrder: o.sortOrder ?? oi,
+                  ...(o.imageUrl && { imageUrl: o.imageUrl }),
+                })),
+              },
+            },
+          });
+        }
+      }
+
+      return tx.product.findUniqueOrThrow({
+        where: { id },
+        include: PRODUCT_INCLUDE,
+      });
     });
 
     return this.mapProduct(updated);
