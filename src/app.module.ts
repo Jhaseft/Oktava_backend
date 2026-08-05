@@ -10,6 +10,7 @@ import { PaymentsModule } from './payments/payments.module';
 import { AppConfigModule } from './app-config/app-config.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { StoreModule } from './store/store.module';
+import { BannersModule } from './banners/banners.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { StoreModule } from './store/store.module';
     AppConfigModule,
     NotificationsModule,
     StoreModule,
+    BannersModule,
   ],
   controllers: [],
   providers: [],
