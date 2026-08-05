@@ -95,6 +95,45 @@ export class UsersService {
     });
   }
 
+  async findOrCreateAppleUser(appleUser: {
+    appleId: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+  }): Promise<User> {
+    // 1. Buscar por appleId (identificador estable de Apple)
+    const byAppleId = await this.prisma.user.findUnique({
+      where: { appleId: appleUser.appleId },
+    });
+    if (byAppleId) return byAppleId;
+
+    // 2. Buscar por email. Apple solo envía email/nombre en el PRIMER login,
+    // por eso el appleId es el vínculo confiable en logins posteriores.
+    const byEmail = await this.findOneByEmail(appleUser.email);
+
+    if (byEmail) {
+      // Si ya existe por email pero no tiene appleId, vincularlo
+      if (!byEmail.appleId) {
+        return this.prisma.user.update({
+          where: { id: byEmail.id },
+          data: { appleId: appleUser.appleId, provider: byEmail.provider ?? 'apple' },
+        });
+      }
+      return byEmail;
+    }
+
+    // 3. Crear usuario nuevo con campos de Apple
+    return this.prisma.user.create({
+      data: {
+        email: appleUser.email,
+        firstName: appleUser.firstName,
+        lastName: appleUser.lastName,
+        appleId: appleUser.appleId,
+        provider: 'apple',
+      },
+    });
+  }
+
   async updateLastLogin(userId: string): Promise<void> {
     await this.prisma.user.update({
       where: { id: userId },

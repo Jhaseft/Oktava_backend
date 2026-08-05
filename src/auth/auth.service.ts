@@ -6,7 +6,9 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { OAuth2Client, type TokenPayload } from 'google-auth-library';
+import { createRemoteJWKSet, jwtVerify } from 'jose';
 import * as crypto from 'crypto';
+import { AppleMobileAuthDto } from './dto/apple-mobile-auth.dto';
 import { LoginDto } from './dto/login.dto';
 import { SignUpDto } from './dto/sign-up.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -37,6 +39,11 @@ function normalizePhone(raw: string): string {
   const stripped = raw.replace(/[\s\-().]/g, '');
   return stripped.startsWith('+') ? stripped : `+${stripped}`;
 }
+
+// JWKS público de Apple. `createRemoteJWKSet` cachea las llaves y refresca
+// automáticamente cuando Apple las rota, así que se crea una sola vez.
+const APPLE_ISSUER = 'https://appleid.apple.com';
+const appleJwks = createRemoteJWKSet(new URL('https://appleid.apple.com/auth/keys'));
 
 @Injectable()
 export class AuthService {
@@ -242,6 +249,47 @@ export class AuthService {
       console.error('[googleMobileLogin] findOrCreateGoogleUser / generateTokenResponse FALLÓ:', err);
       throw err;
     }
+  }
+
+  async appleMobileLogin(dto: AppleMobileAuthDto) {
+    const expectedAudience = this.configService.get<string>('APPLE_CLIENT_ID');
+    if (!expectedAudience) {
+      throw new UnauthorizedException('Configuración de Apple para móvil ausente.');
+    }
+
+    // Verificar firma, emisor y audiencia (bundle id) del identityToken.
+    let payload: Record<string, any>;
+    try {
+      const verified = await jwtVerify(dto.identityToken, appleJwks, {
+        issuer: APPLE_ISSUER,
+        audience: expectedAudience,
+      });
+      payload = verified.payload as Record<string, any>;
+    } catch {
+      throw new UnauthorizedException('Token de Apple inválido o expirado.');
+    }
+
+    // `sub` es el Apple user id estable. El email solo llega en el token la 1ª vez;
+    // luego se toma el guardado en BD (via appleId).
+    const appleId = (payload.sub as string) ?? dto.appleUserId;
+    if (!appleId) {
+      throw new UnauthorizedException('No se pudo identificar la cuenta de Apple.');
+    }
+
+    const email = (payload.email as string) ?? dto.email;
+    if (!email) {
+      throw new UnauthorizedException('No se pudo obtener el email desde Apple.');
+    }
+
+    const user = await this.usersService.findOrCreateAppleUser({
+      appleId,
+      email,
+      firstName: dto.firstName ?? '',
+      lastName: dto.lastName ?? '',
+    });
+
+    const { password: _, ...userWithoutPassword } = user;
+    return this.generateTokenResponse(userWithoutPassword);
   }
 
   // ─── Forgot / Reset Password ───────────────────────────────────────────────

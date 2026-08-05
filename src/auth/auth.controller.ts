@@ -23,6 +23,7 @@ import { GoogleAuthGuard } from './guards/google-auth.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { GoogleMobileAuthDto } from './dto/google-mobile-auth.dto';
+import { AppleMobileAuthDto } from './dto/apple-mobile-auth.dto';
 import type { Request, Response } from 'express';
 
 interface JwtUser { userId: string; }
@@ -102,6 +103,12 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async googleMobileAuth(@Body() dto: GoogleMobileAuthDto) {
     return this.authService.googleMobileLogin(dto.idToken);
+  }
+
+  @Post('apple/mobile')
+  @HttpCode(HttpStatus.OK)
+  async appleMobileAuth(@Body() dto: AppleMobileAuthDto) {
+    return this.authService.appleMobileLogin(dto);
   }
 
   @Get('google')
