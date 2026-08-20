@@ -197,17 +197,11 @@ export class AuthService {
       (v): v is string => !!v,
     );
 
-    console.log('[googleMobileLogin] audiences permitidos:', allowedAudiences);
-    console.log('[googleMobileLogin] idToken recibido (primeros 30):', idToken?.slice(0, 30));
 
     try {
       const [, payloadB64] = idToken.split('.');
       const decoded = JSON.parse(Buffer.from(payloadB64, 'base64').toString('utf8'));
-      console.log('[googleMobileLogin] token aud:', decoded.aud);
-      console.log('[googleMobileLogin] token iss:', decoded.iss);
-      console.log('[googleMobileLogin] token email:', decoded.email);
-      console.log('[googleMobileLogin] token exp:', new Date(decoded.exp * 1000).toISOString());
-      console.log('[googleMobileLogin] now:', new Date().toISOString());
+
     } catch (e) {
       console.log('[googleMobileLogin] No se pudo decodificar el JWT manualmente:', e);
     }
@@ -223,7 +217,7 @@ export class AuthService {
     try {
       const ticket = await client.verifyIdToken({ idToken, audience: allowedAudiences });
       payload = ticket.getPayload();
-      console.log('[googleMobileLogin] verifyIdToken OK. payload.email:', payload?.email);
+    
     } catch (err) {
       console.error('[googleMobileLogin] verifyIdToken FALLÓ:', err);
       throw new UnauthorizedException('Token de Google inválido o expirado.');
@@ -241,8 +235,7 @@ export class AuthService {
         lastName: payload.family_name ?? '',
         googleId: payload.sub,
       });
-      console.log('[googleMobileLogin] findOrCreateGoogleUser OK. userId:', user.id);
-
+      
       const { password: _, ...userWithoutPassword } = user;
       return this.generateTokenResponse(userWithoutPassword);
     } catch (err) {

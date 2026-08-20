@@ -25,16 +25,16 @@ function readDatabaseUrl() {
           'INSERT INTO business_hours (id, "dayOfWeek", is_closed, open_time, close_time) VALUES (gen_random_uuid(), $1, false, $2, $3)',
           [d, '09:00', '02:00'],
         );
-        console.log(`día ${d}: insertado`);
+  
       } else {
-        console.log(`día ${d}: actualizado`);
+    
       }
     }
     const { rows } = await client.query(
       'SELECT "dayOfWeek", is_closed, open_time, close_time FROM business_hours ORDER BY "dayOfWeek"',
     );
-    console.log('\nEstado final:');
-    console.table(rows);
+   
+
   } finally {
     await client.end();
   }
