@@ -65,11 +65,10 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
 const MAX_DELIVERY_KM = 14;
 
 function calcDeliveryFee(km: number): number {
-  const adjusted = km * 1.25;
-  if (adjusted <= 2) return 5;
-  if (adjusted <= 5) return 10;
-  if (adjusted <= 8) return 15;
-  return 20;
+  // Base 10 Bs hasta 2 km; +1 Bs por cada 0.5 km adicionales.
+  // Ej: 2 km → 10, 2.5 km → 11, 3 km → 12, y así.
+  const extra = Math.max(0, km - 2);
+  return Math.round(10 + extra * 2);
 }
 
 // Bolivia es UTC-4. Calcula el rango UTC del día actual según zona horaria boliviana.
