@@ -161,6 +161,11 @@ export class BanecoApiService {
     return withoutQuotes.replace(/[\r\n]+/g, '');
   }
 
+  /** ¿Están todas las credenciales presentes? Útil para no correr el cron sin config. */
+  isConfigured(): boolean {
+    return !!(this.base && this.aesKey && this.username && this.password && this.accountCredit);
+  }
+
   private ensureConfig() {
     if (!this.base || !this.aesKey || !this.username || !this.password || !this.accountCredit) {
       this.logger.error(

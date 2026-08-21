@@ -78,3 +78,24 @@ export class BanecoController {
     return { responseCode: 0, message: '' };
   }
 }
+
+/**
+ * Alias del webhook en el path EXACTO que documenta Baneco (7.5):
+ *   POST /api/qrsimple/notifyPaymentQR
+ * Apunta al mismo handler, para que el banco pueda registrar la URL tal cual
+ * figura en la especificación (`https://<dominio>/api/qrsimple/notifyPaymentQR`).
+ */
+@Controller()
+export class BanecoNotifyController {
+  constructor(private readonly baneco: BanecoService) {}
+
+  @Post('api/qrsimple/notifyPaymentQR')
+  @HttpCode(HttpStatus.OK)
+  async notifyPaymentQR(@Body() body: { Payment?: any; payment?: any }) {
+    const payment = body?.Payment ?? body?.payment;
+    if (payment?.qrId) {
+      await this.baneco.applyPayment(payment);
+    }
+    return { responseCode: 0, message: '' };
+  }
+}
