@@ -488,9 +488,15 @@ export class BanecoService implements OnModuleInit, OnModuleDestroy {
       data: { status: OrderStatus.PENDING },
     });
 
-    // El pago quedó confirmado por esta llamada: apagamos el escuchador y
-    // notificamos al cliente (ÚNICA notificación del flujo QR).
+    // El pago quedó confirmado por esta llamada: apagamos el escuchador.
     this.stopWatcher(qrId);
+
+    // Anulamos el QR en el banco NOSOTROS (no confiamos en que el banco aplique
+    // el singleUse): así queda muerto y no se puede volver a pagar el mismo QR.
+    // Si el banco ya lo bloqueó, responderá error y lo ignoramos.
+    void this.banecoApi.cancelQR(qrId).catch(() => undefined);
+
+    // Notificamos al cliente (ÚNICA notificación del flujo QR).
     void this.notifications.sendToUser(payment.userId, {
       title: 'Pago confirmado ✅',
       body: `Recibimos tu pago del pedido ${payment.order?.orderNumber ?? ''}. ¡Ya lo estamos gestionando!`,
