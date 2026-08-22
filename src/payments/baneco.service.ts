@@ -1,5 +1,7 @@
 import {
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Injectable,
   Logger,
   NotFoundException,
@@ -10,6 +12,7 @@ import { ConfigService } from '@nestjs/config';
 import { OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import { OrdersService } from '../orders/orders.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { BanecoApiService, PaymentQR } from './baneco-api.service';
 import { CreateBanecoQrDto } from './dto/create-baneco-qr.dto';
 
@@ -35,21 +38,17 @@ const PROVIDER = 'baneco';
 @Injectable()
 export class BanecoService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(BanecoService.name);
-  private reconcileTimer: ReturnType<typeof setInterval> | null = null;
-  private reconcileRunning = false;
+  // Escuchadores activos, uno por qrId. Viven ~10 min y se autodestruyen apenas
+  // el pago se confirma/cancela (o al vencer la ventana).
+  private readonly watchers = new Map<string, ReturnType<typeof setInterval>>();
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly orders: OrdersService,
     private readonly banecoApi: BanecoApiService,
     private readonly config: ConfigService,
+    private readonly notifications: NotificationsService,
   ) {}
-
-  private get reconcileIntervalMs(): number {
-    const raw = this.config.get<string>('BANECO_RECONCILE_INTERVAL_MS');
-    const parsed = raw ? Number(raw) : NaN;
-    return Number.isFinite(parsed) && parsed >= 30_000 ? parsed : 120_000;
-  }
 
   private get pendingExpireMinutes(): number {
     const raw = this.config.get<string>('BANECO_PENDING_EXPIRE_MINUTES');
@@ -57,68 +56,181 @@ export class BanecoService implements OnModuleInit, OnModuleDestroy {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 30;
   }
 
-  // Arranca el cron de reconciliación: confirma pagos que llegaron aunque el
-  // cliente cerrara la app, y cancela los QR pendientes ya vencidos.
-  onModuleInit() {
-    if (!this.banecoApi.isConfigured()) {
-      this.logger.warn('[RECONCILE] Baneco sin configurar; cron desactivado.');
-      return;
+  private get watchDurationMs(): number {
+    const raw = this.config.get<string>('BANECO_WATCH_DURATION_MS');
+    const parsed = raw ? Number(raw) : NaN;
+    return Number.isFinite(parsed) && parsed >= 60_000 ? parsed : 600_000; // 10 min
+  }
+
+  private get watchIntervalMs(): number {
+    const raw = this.config.get<string>('BANECO_WATCH_INTERVAL_MS');
+    const parsed = raw ? Number(raw) : NaN;
+    return Number.isFinite(parsed) && parsed >= 3_000 ? parsed : 8_000; // 8s
+  }
+
+  private get qrCooldownMs(): number {
+    const raw = this.config.get<string>('BANECO_QR_COOLDOWN_MS');
+    const parsed = raw ? Number(raw) : NaN;
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 30_000; // 30s
+  }
+
+  // ─── Ciclo de vida: re-armado de escuchadores ──────────────────────────────
+
+  /**
+   * Al iniciar (o reiniciar) el server, re-arma un escuchador para cada pago
+   * pendiente creado dentro de la ventana de vigilancia. Cubre el caso de un
+   * reinicio en medio de los 10 min. Es una única pasada, NO un cron.
+   */
+  async onModuleInit() {
+    if (!this.banecoApi.isConfigured()) return;
+    try {
+      const since = new Date(Date.now() - this.watchDurationMs);
+      const pendings = await this.prisma.payment.findMany({
+        where: {
+          provider: PROVIDER,
+          status: 'pending',
+          gatewayTransactionId: { not: null },
+          createdAt: { gte: since },
+        },
+        select: { gatewayTransactionId: true, createdAt: true },
+      });
+      for (const p of pendings) {
+        const deadline = p.createdAt.getTime() + this.watchDurationMs;
+        this.startWatcher(p.gatewayTransactionId!, deadline);
+      }
+      if (pendings.length > 0) {
+        this.logger.log(`[WATCH] re-armados ${pendings.length} escuchadores al iniciar`);
+      }
+    } catch (e: any) {
+      this.logger.error(`[WATCH] re-armado inicial falló: ${e?.message ?? e}`);
     }
-    this.reconcileTimer = setInterval(() => {
-      if (this.reconcileRunning) return;
-      this.reconcileRunning = true;
-      this.reconcilePending()
-        .catch((e) => this.logger.error(`[RECONCILE] error: ${e?.message ?? e}`))
-        .finally(() => {
-          this.reconcileRunning = false;
-        });
-    }, this.reconcileIntervalMs);
-    this.logger.log(`[RECONCILE] cron activo cada ${this.reconcileIntervalMs}ms`);
   }
 
   onModuleDestroy() {
-    if (this.reconcileTimer) clearInterval(this.reconcileTimer);
+    for (const timer of this.watchers.values()) clearInterval(timer);
+    this.watchers.clear();
+  }
+
+  // ─── Escuchador por-QR ─────────────────────────────────────────────────────
+
+  /** Arranca (si no existe) un escuchador que sondea el pago hasta `deadline`. */
+  private startWatcher(qrId: string, deadline = Date.now() + this.watchDurationMs) {
+    if (this.watchers.has(qrId)) return;
+    const timer = setInterval(() => {
+      void this.watchTick(qrId, deadline);
+    }, this.watchIntervalMs);
+    this.watchers.set(qrId, timer);
+  }
+
+  /** Detiene y elimina el escuchador de un qrId (idempotente). */
+  private stopWatcher(qrId: string) {
+    const timer = this.watchers.get(qrId);
+    if (timer) {
+      clearInterval(timer);
+      this.watchers.delete(qrId);
+    }
   }
 
   /**
-   * Recorre los pagos QR pendientes y los reconcilia contra el banco:
+   * Un ciclo del escuchador: si el pago ya se resolvió por otra vía, se apaga;
+   * si sigue pendiente, consulta al banco y confirma/cancela; al vencer la
+   * ventana, cancela el pedido (silencioso, sin push) salvo que el banco reporte
+   * que ya se pagó (en cuyo caso confirma).
+   */
+  private async watchTick(qrId: string, deadline: number) {
+    try {
+      const payment = await this.prisma.payment.findFirst({
+        where: { provider: PROVIDER, gatewayTransactionId: qrId },
+        select: { status: true },
+      });
+      // Ya resuelto por el frontend u otra vía → dejar de escuchar.
+      if (!payment || payment.status !== 'pending') {
+        this.stopWatcher(qrId);
+        return;
+      }
+
+      const remote = await this.banecoApi.statusQR(qrId);
+      if (remote.statusQrCode === 1) {
+        await this.applyPaymentByQrId(qrId, BanecoApiService.firstPayment(remote.payment));
+        this.stopWatcher(qrId);
+        return;
+      }
+      if (remote.statusQrCode === 9) {
+        await this.markFailed(qrId);
+        this.stopWatcher(qrId);
+        return;
+      }
+
+      // Sigue pendiente: ¿venció la ventana de 10 min?
+      if (Date.now() >= deadline) {
+        // Paid-safe: si justo se pagó entre el sondeo y ahora, el banco rechaza
+        // la anulación con "pagado" → confirmamos en vez de cancelar.
+        const res = await this.banecoApi.cancelQR(qrId).catch(() => ({ responseCode: -1, message: '' }));
+        if (res.responseCode !== 0 && /pagado/i.test(res.message ?? '')) {
+          await this.applyPaymentByQrId(qrId, null);
+        } else {
+          await this.markCancelled(qrId); // cancelación silenciosa (sin push)
+          this.logger.log(`[WATCH] vencido y cancelado qrId=${qrId}`);
+        }
+        this.stopWatcher(qrId);
+      }
+    } catch {
+      // Fallo puntual de red: reintenta al próximo tick. Si ya venció, se apaga.
+      if (Date.now() >= deadline) this.stopWatcher(qrId);
+    }
+  }
+
+  /**
+   * Reconciliación BAJO DEMANDA (no hay cron): se dispara cuando el usuario abre
+   * sus pedidos. Revisa solo SUS pagos pendientes contra el banco:
    *  - pagado (1)   → confirma el pedido (rescata pagos perdidos por cierre de app).
    *  - anulado (9)  → marca fallido.
    *  - pendiente(0) → si ya venció la ventana, anula en el banco y cancela.
-   * Red de seguridad server-side: funciona aunque la app del cliente esté cerrada.
+   * Si el usuario no tiene pendientes, no llama al banco.
    */
-  async reconcilePending() {
+  async reconcilePendingForUser(userId: string) {
     const pendings = await this.prisma.payment.findMany({
-      where: { provider: PROVIDER, status: 'pending', gatewayTransactionId: { not: null } },
+      where: {
+        provider: PROVIDER,
+        status: 'pending',
+        userId,
+        gatewayTransactionId: { not: null },
+      },
       select: { id: true, gatewayTransactionId: true, createdAt: true },
       orderBy: { createdAt: 'asc' },
-      take: 100,
+      take: 20,
     });
-    if (pendings.length === 0) return;
+    if (pendings.length === 0) return { confirmed: 0, cancelled: 0 };
 
+    let confirmed = 0;
+    let cancelled = 0;
     for (const p of pendings) {
       const qrId = p.gatewayTransactionId!;
       try {
         const remote = await this.banecoApi.statusQR(qrId);
         if (remote.statusQrCode === 1) {
           await this.applyPaymentByQrId(qrId, BanecoApiService.firstPayment(remote.payment));
-          this.logger.log(`[RECONCILE] pago rescatado qrId=${qrId}`);
+          confirmed++;
+          this.logger.log(`[RECONCILE] pago rescatado qrId=${qrId} userId=${userId}`);
           continue;
         }
         if (remote.statusQrCode === 9) {
           await this.markFailed(qrId);
+          cancelled++;
           continue;
         }
         const ageMin = (Date.now() - p.createdAt.getTime()) / 60_000;
         if (ageMin >= this.pendingExpireMinutes) {
           await this.banecoApi.cancelQR(qrId).catch(() => undefined);
           await this.markCancelled(qrId);
+          cancelled++;
           this.logger.log(`[RECONCILE] vencido y cancelado qrId=${qrId} ageMin=${Math.round(ageMin)}`);
         }
       } catch {
-        // Fallo de red puntual: se reintenta en el próximo ciclo.
+        // Fallo de red puntual: se reintenta la próxima vez que abra Pedidos.
       }
     }
+    return { confirmed, cancelled };
   }
 
   private get currency(): 'BOB' | 'USD' {
@@ -150,6 +262,23 @@ export class BanecoService implements OnModuleInit, OnModuleDestroy {
    */
   async createQr(dto: CreateBanecoQrDto, user: JwtUser) {
     const traceId = this.newReqId();
+
+    // 0. Rate limit anti-spam: no permitir generar QRs muy seguido por usuario.
+    const cooldownMs = this.qrCooldownMs;
+    if (cooldownMs > 0) {
+      const last = await this.prisma.payment.findFirst({
+        where: { userId: user.userId, provider: PROVIDER },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+      });
+      if (last && Date.now() - last.createdAt.getTime() < cooldownMs) {
+        const wait = Math.ceil((cooldownMs - (Date.now() - last.createdAt.getTime())) / 1000);
+        throw new HttpException(
+          { code: 'QR_COOLDOWN', message: `Espera ${wait}s antes de generar otro QR.` },
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+    }
 
     // 1. Crear la orden (valida usuario/teléfono/tienda/dirección/precios).
     const order = await this.orders.create(
@@ -200,6 +329,10 @@ export class BanecoService implements OnModuleInit, OnModuleDestroy {
         where: { id: payment.id },
         data: { gatewayTransactionId: qr.qrId },
       });
+
+      // Arranca el escuchador: sondea el pago cada ~8s por 10 min, aunque el
+      // cliente cierre la app. Se apaga apenas se confirme/cancele.
+      this.startWatcher(qr.qrId);
 
       this.logger.log(`[QR][${traceId}] success orderId=${order.id} qrId=${qr.qrId}`);
 
@@ -326,6 +459,7 @@ export class BanecoService implements OnModuleInit, OnModuleDestroy {
   private async applyPaymentByQrId(qrId: string, bankPayment: PaymentQR | null) {
     const payment = await this.prisma.payment.findFirst({
       where: { provider: PROVIDER, gatewayTransactionId: qrId },
+      include: { order: { select: { orderNumber: true } } },
     });
     if (!payment) {
       this.logger.warn(`[APPLY][${qrId}] no payment found`);
@@ -354,6 +488,15 @@ export class BanecoService implements OnModuleInit, OnModuleDestroy {
       data: { status: OrderStatus.PENDING },
     });
 
+    // El pago quedó confirmado por esta llamada: apagamos el escuchador y
+    // notificamos al cliente (ÚNICA notificación del flujo QR).
+    this.stopWatcher(qrId);
+    void this.notifications.sendToUser(payment.userId, {
+      title: 'Pago confirmado ✅',
+      body: `Recibimos tu pago del pedido ${payment.order?.orderNumber ?? ''}. ¡Ya lo estamos gestionando!`,
+      data: { type: 'payment_confirmed', orderId: payment.orderId },
+    });
+
     this.logger.log(`[APPLY][${qrId}] paid orderId=${payment.orderId} amount=${payment.amount}`);
   }
 
@@ -368,6 +511,7 @@ export class BanecoService implements OnModuleInit, OnModuleDestroy {
       where: { id: payment.id, status: 'pending' },
       data: { status: 'failed', failedAt: new Date() },
     });
+    this.stopWatcher(qrId);
     if (claimed.count === 0) return;
 
     await this.prisma.order.updateMany({
@@ -387,6 +531,7 @@ export class BanecoService implements OnModuleInit, OnModuleDestroy {
       where: { id: payment.id, status: 'pending' },
       data: { status: 'cancelled', failedAt: new Date() },
     });
+    this.stopWatcher(qrId);
     if (claimed.count === 0) return;
 
     await this.prisma.order.updateMany({

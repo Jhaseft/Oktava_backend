@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { OrdersModule } from '../orders/orders.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
 import { NiubizService } from './niubiz.service';
@@ -8,7 +9,7 @@ import { BanecoService } from './baneco.service';
 import { BanecoApiService } from './baneco-api.service';
 
 @Module({
-  imports: [OrdersModule],
+  imports: [OrdersModule, NotificationsModule],
   controllers: [PaymentsController, BanecoController, BanecoNotifyController],
   providers: [PaymentsService, NiubizService, BanecoService, BanecoApiService],
   exports: [PaymentsService, BanecoService],

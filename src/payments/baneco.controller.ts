@@ -64,6 +64,19 @@ export class BanecoController {
   }
 
   /**
+   * POST /payments/baneco/reconcile
+   * Reconciliación bajo demanda: revisa los pagos QR pendientes del usuario
+   * contra el banco (confirma los pagados, cancela los vencidos). Lo llama el
+   * frontend al abrir "Mis pedidos". Response: { confirmed, cancelled }
+   */
+  @Post('reconcile')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  reconcile(@CurrentUser() user: JwtUser) {
+    return this.baneco.reconcilePendingForUser(user.userId);
+  }
+
+  /**
    * POST /payments/baneco/notify
    * Webhook público (sin JWT) que el banco llama al confirmar un pago.
    * Debe devolver { responseCode: 0 } para que el banco lo dé por recibido.
