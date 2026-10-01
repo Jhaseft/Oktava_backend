@@ -106,8 +106,7 @@ export class AuthService {
     const code = makeCode();
     this.pendingPhoneCodes.set(userId, { code, expiresAt: Date.now() + CODE_TTL_MS, attempts: 0, sentAt: Date.now() });
 
-    const text = `Tu código de verificación Oktava es: *${code}*\nExpira en 10 minutos.`;
-    await this.whatsappService.sendText(user.phone, text);
+    await this.whatsappService.sendOtp(user.phone, code);
   }
 
   async verifyPhone(userId: string, code: string): Promise<Omit<User, 'password' | 'createdAt' | 'updatedAt' | 'lastLogin'>> {
